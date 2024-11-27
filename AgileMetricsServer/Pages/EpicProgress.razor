@@ -1,0 +1,274 @@
+﻿@page "/epicprogress"
+
+<PageTitle>Epic Progress</PageTitle>
+
+@using AdoAnalysisServerApis
+@using AgileMetricsRules
+@using AgileMetricsServer.Models
+@using AgileMetricsServer.Shared
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@using Microsoft.Extensions.Caching.Memory
+
+@inject ProtectedLocalStorage ProtectedLocalStore
+@inject ProtectedSessionStorage ProtectedSessionStore
+@inject IAdoAnalysisService AdoService
+@inject IMemoryCache InMemoryCache
+
+<h1>Epic Progress</h1>
+
+<body>
+    <EditForm Model="@epicProgressDataModel" OnValidSubmit="@HandleValidSubmit">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+        Use this screen to get a Feature Progress Report based on an Epic work item ID.
+        <br />
+        <br />
+        <p>
+            <label>
+                ADO Organization/Project:
+                <InputSelect @bind-Value="epicProgressDataModel.AdoOrganization">
+                    <option value="">Select...</option>
+                    <option value="@AdoAnalysisService.TrTaxOrganization"> @AdoAnalysisService.TrTaxOrganization </option>
+                    <option value="@AdoAnalysisService.TrTaxDefaultPatagoniaOrganization"> @AdoAnalysisService.TrTaxDefaultPatagoniaOrganization </option>
+                    <option value="@AdoAnalysisService.TrTaxDefaultEflexwareOrganization"> @AdoAnalysisService.TrTaxDefaultEflexwareOrganization </option>
+                </InputSelect>
+            </label>
+            <label>
+                Epic ID:
+                <InputNumber id="epicid" @bind-Value="epicProgressDataModel.EpicId" />
+            </label>
+            <label>
+                Start Date:
+                <InputDate id="startdate" @bind-Value="epicProgressDataModel.StartDate" />
+            </label>
+            up to Today with
+            <label>
+                Reporting Frequency:
+                <InputSelect @bind-Value="epicProgressDataModel.ReportingFrequency">
+                    <option value="">Select...</option>
+                    <option value="@AdoAnalysisService.FrequencyDay">@AdoAnalysisService.FrequencyDay</option>
+                    <option value="@AdoAnalysisService.FrequencyWeek">@AdoAnalysisService.FrequencyWeek</option>
+                    <option value="@AdoAnalysisService.FrequencyMonth">@AdoAnalysisService.FrequencyMonth</option>
+                </InputSelect>
+            </label>
+            <button type="submit">Submit</button>
+        </p>
+
+    </EditForm>
+
+    @if (!dataFetched)
+    {
+        <p><em>Choose values...</em></p>
+    }
+    else if (epicProgressDataModel.AdoOrganization == AdoAnalysisService.TrTaxOrganization && string.IsNullOrWhiteSpace(adoToken))
+    {
+        <p><em>ADO tr-tax token is not set on the Home page</em></p>
+    }
+    else if ((epicProgressDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultPatagoniaOrganization ||
+            epicProgressDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultEflexwareOrganization) &&
+            string.IsNullOrWhiteSpace(adoTrTaxDefaultToken))
+    {
+        <p><em>ADO tr-tax-default token is not set on the Home page</em></p>
+    }
+    else if (notAuthorized)
+    {
+        <p><em>Not authorized. Token is not valid. Maybe it is expired.</em></p>
+    }
+    else if (badRequest)
+    {
+        <p><em>Bad Request. Check that your entries do not have bad data.</em></p>
+    }
+    else if (noFeaturesFound)
+    {
+        <p><em>No Features found under the Epic. </em></p>
+    }
+    else if (children == null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else
+    {
+        <FeatureProgressChart Id="Feature Progress" Data="@dataPoints" QueryDetails2="@epicProgressDataModel">
+        </FeatureProgressChart>
+    }
+
+    @code {
+        private FeatureChildrenJsonRecord? children;
+        private Dictionary<string, List<FeatureChildPoint>>? dataPoints;
+        private EpicProgressDataModel epicProgressDataModel = new EpicProgressDataModel();
+        private string? adoToken;
+        private string? adoTrTaxDefaultToken;
+        private bool shouldRender = true;
+        private bool dataFetched = false;
+        private bool notAuthorized = false;
+        private bool badRequest = false;
+        private bool noFeaturesFound = false;
+        private const string adoOrgLocalStoreId = "fp-adoorg";
+        private const string epicIdLocalStoreId = "ep-epicid";
+        private const string startDateSessionStoreId = "fp-startdate";
+        private const string frequencySessionStoreId = "fp-frequency";
+
+        protected override async Task OnInitializedAsync()
+        {
+            var tokenCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoTrTaxTokenLocalStoreId);
+            if (tokenCookie.Success && !string.IsNullOrWhiteSpace(tokenCookie.Value))
+            {
+                adoToken = SettingsModel.ReverseToken(tokenCookie.Value);
+            }
+            var trTaxDefaulTokenCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoTrTaxDefaultTokenLocalStoreId);
+            if (trTaxDefaulTokenCookie.Success && !string.IsNullOrWhiteSpace(trTaxDefaulTokenCookie.Value))
+            {
+                adoTrTaxDefaultToken = SettingsModel.ReverseToken(trTaxDefaulTokenCookie.Value);
+            }
+
+            var adoOrg = await GetAndRemovedGlobalAdoFromProtectedStoreForOneTimeMigration();
+            if (adoOrg.Success && !string.IsNullOrWhiteSpace(adoOrg.Value))
+            {
+                epicProgressDataModel.AdoOrganization = adoOrg.Value;
+            }
+            adoOrg = await ProtectedLocalStore.GetAsync<string>(adoOrgLocalStoreId);
+            if (adoOrg.Success && !string.IsNullOrWhiteSpace(adoOrg.Value))
+            {
+                epicProgressDataModel.AdoOrganization = adoOrg.Value;
+            }
+
+            if (string.IsNullOrWhiteSpace(epicProgressDataModel.AdoOrganization))
+                return;
+
+            var epicId = await ProtectedLocalStore.GetAsync<int>(epicProgressDataModel.AdoOrganization + epicIdLocalStoreId);
+            if (epicId.Success)
+            {
+                epicProgressDataModel.EpicId = epicId.Value;
+            }
+            var startDate = await ProtectedSessionStore.GetAsync<DateTime>(epicProgressDataModel.AdoOrganization + startDateSessionStoreId);
+            if (startDate.Success)
+            {
+                epicProgressDataModel.StartDate = startDate.Value;
+            }
+            var frequency = await ProtectedSessionStore.GetAsync<string>(epicProgressDataModel.AdoOrganization + frequencySessionStoreId);
+            if (frequency.Success)
+            {
+                epicProgressDataModel.ReportingFrequency = frequency.Value;
+            }
+
+            await GatherData();
+        }
+
+        protected override bool ShouldRender()
+        {
+            var render = shouldRender;
+            if (children != null)
+                shouldRender = false;
+            return render;
+        }
+
+
+        private async Task HandleValidSubmit()
+        {
+            await GatherData();
+        }
+
+        private async Task GatherData()
+        {
+            if (string.IsNullOrWhiteSpace(epicProgressDataModel.AdoOrganization) || epicProgressDataModel.EpicId == null || epicProgressDataModel.StartDate == null || string.IsNullOrWhiteSpace(epicProgressDataModel.ReportingFrequency))
+                return;
+
+            children = null;
+            dataPoints = null;
+            shouldRender = true;
+            notAuthorized = false;
+            badRequest = false;
+            noFeaturesFound = false;
+
+            dataFetched = true;
+
+            string? useToken = "";
+            if (epicProgressDataModel.AdoOrganization == AdoAnalysisService.TrTaxOrganization)
+                useToken = adoToken;
+            else if (epicProgressDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultPatagoniaOrganization || epicProgressDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultEflexwareOrganization)
+                useToken = adoTrTaxDefaultToken;
+
+            if (!string.IsNullOrWhiteSpace(useToken))
+            {
+                var featureIds = await GetEpicFeatureIdsData(epicProgressDataModel.EpicId.Value, useToken, epicProgressDataModel.AdoOrganization);
+                if (featureIds == EpicFeatureIds.NotAuthorized)
+                    notAuthorized = true;
+                else if (featureIds == EpicFeatureIds.BadRequest)
+                    badRequest = true;
+                else if (string.IsNullOrWhiteSpace(featureIds))
+                    noFeaturesFound = true;
+                else
+                {
+                    children = await GetFeatureProgressData(featureIds, epicProgressDataModel.StartDate.Value, epicProgressDataModel.ReportingFrequency, useToken, epicProgressDataModel.AdoOrganization);
+                    if (children == null)
+                        return;
+                    if (children.NotAuthorized)
+                        notAuthorized = true;
+                    else if (children.BadRequest)
+                        badRequest = true;
+                    else
+                        dataPoints = FeatureChildren.CalculateChildrenDataPoints(children);
+                }
+            }
+
+            await ProtectedLocalStore.SetAsync(adoOrgLocalStoreId, epicProgressDataModel.AdoOrganization);
+            await ProtectedLocalStore.SetAsync(epicProgressDataModel.AdoOrganization + epicIdLocalStoreId, epicProgressDataModel.EpicId);
+            await ProtectedSessionStore.SetAsync(epicProgressDataModel.AdoOrganization + startDateSessionStoreId, epicProgressDataModel.StartDate);
+            await ProtectedSessionStore.SetAsync(epicProgressDataModel.AdoOrganization + frequencySessionStoreId, epicProgressDataModel.ReportingFrequency);
+        }
+
+        private async Task<string> GetEpicFeatureIdsData(int epicId, string token, string org)
+        {
+            var cacheKey = string.Format("{0}\n{1}\n{2}", "ep", epicId, org);
+
+            EpicFeatureIdsJsonRecord? featureListCache;
+            var cached = InMemoryCache.TryGetValue(cacheKey, out featureListCache);
+            if (!cached || featureListCache == null)
+                featureListCache = await AdoService.GetEpicFeatureIdsData(epicId, token, org);
+
+            if (!cached && featureListCache != null && !featureListCache.NotAuthorized)
+            {
+                var cachedEntryOptions = new MemoryCacheEntryOptions();
+                cachedEntryOptions.AbsoluteExpiration = new DateTimeOffset(DateTime.Now.AddDays(1).Date);
+                InMemoryCache.Set(cacheKey, featureListCache, cachedEntryOptions);
+            }
+
+            string featureIds = string.Empty;
+
+            if (featureListCache != null)
+                featureIds = EpicFeatureIds.CollapseFeatureIds(featureListCache);
+
+            return featureIds;
+        }
+
+        private async Task<FeatureChildrenJsonRecord?> GetFeatureProgressData(string featureIds, DateTime startDate, string reportingFrequency, string token, string org)
+        {
+            var cacheKey = string.Format("{0}\n{1}\n{2}\n{3}\n{4}\n{5}\n", "fp", featureIds, startDate, reportingFrequency, org, string.Empty);
+
+            FeatureChildrenJsonRecord? childrenCache;
+            var cached = InMemoryCache.TryGetValue(cacheKey, out childrenCache);
+            if (!cached || childrenCache == null)
+                childrenCache = await AdoService.GetFeatureProgressData(featureIds, startDate, reportingFrequency, token, org);
+
+            if (!cached && childrenCache != null && !childrenCache.NotAuthorized)
+            {
+                var cachedEntryOptions = new MemoryCacheEntryOptions();
+                cachedEntryOptions.AbsoluteExpiration = new DateTimeOffset(DateTime.Now.AddDays(1).Date);
+                InMemoryCache.Set(cacheKey, childrenCache, cachedEntryOptions);
+            }
+
+            return childrenCache;
+        }
+
+        private async Task<ProtectedBrowserStorageResult<string>> GetAndRemovedGlobalAdoFromProtectedStoreForOneTimeMigration()
+        {
+            var orgCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoOrganizationStoreId);
+            if (orgCookie.Success && !string.IsNullOrWhiteSpace(orgCookie.Value))
+            {
+                await ProtectedLocalStore.DeleteAsync(SettingsModel.adoOrganizationStoreId);
+            }
+
+            return orgCookie;
+        }
+    }
+</body>

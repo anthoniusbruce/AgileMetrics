@@ -1,0 +1,50 @@
+﻿@using AgileMetricsRules
+@using AgileMetricsServer.Models
+
+@inject IJSRuntime JSRuntime
+
+<canvas id="@Id"></canvas>
+<p>
+    <button @onclick="DownloadImage">
+        Download Image
+    </button>
+</p>
+@code {
+    [Parameter]
+    public string? Id { get; set; }
+
+    [Parameter]
+    public Dictionary <string, List<FeatureChildPoint>>? Data { get; set; }
+
+    [Parameter]
+    public FeatureProgressDataModel? QueryDetails1 { get; set; }
+
+    [Parameter]
+    public EpicProgressDataModel? QueryDetails2 { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Data == null)
+            return;
+
+        var closedItems = FeatureProgressResults.GetState(Data, "Closed");
+        var resolvedItems = FeatureProgressResults.GetState(Data, "Resolved");
+        var newItems = FeatureProgressResults.GetState(Data, "New");
+        var activeItems = FeatureProgressResults.GetState(Data, "Active");
+        var theRestItems = FeatureProgressResults.GetState(Data, "theRest");
+
+        string title = string.Empty;
+        if (QueryDetails1 != null && QueryDetails1.StartDate != null)
+            title = string.Format("Progress of Feature(s) {0} from {1} to today evaluated {2}", QueryDetails1.FeatureIds, QueryDetails1.StartDate.Value.ToString("MMMM dd yyyy"), QueryDetails1.ReportingFrequency);
+        else if (QueryDetails2 != null && QueryDetails2.StartDate != null)
+            title = string.Format("Progress of Features from Epic {0} from {1} to today evaluated {2}", QueryDetails2.EpicId, QueryDetails2.StartDate, QueryDetails2.ReportingFrequency);
+
+        await JSRuntime.InvokeVoidAsync("setupFeatureProgress", Id, title, closedItems, resolvedItems, newItems, activeItems, theRestItems);
+    }
+
+    private async Task DownloadImage()
+    {
+        await JSRuntime.InvokeVoidAsync("DownloadImage", "featureprogress.png", Id);
+    }
+}
+

@@ -1,0 +1,104 @@
+﻿@using AgileMetricsRules
+@using AgileMetricsServer.Models
+
+@inject IJSRuntime JSRuntime
+
+<canvas id="@Id"></canvas>
+<p>
+    <button @onclick="DownloadCsv">
+        Download CSV
+    </button>
+    <button @onclick="DownloadImage">
+        Download Image
+    </button>
+</p>
+
+@code {
+    [Parameter]
+    public string? Id { get; set; }
+
+    [Parameter]
+    public SortedDictionary<int, int>? Data { get; set; }
+
+    [Parameter]
+    public Percentiles? Percentiles { get; set; }
+
+    [Parameter]
+    public string? Title { get; set; }
+
+    [Parameter]
+    public SimulationsDataModel? QueryDetails { get; set; }
+
+    private SimulationResults? SimulationResults { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Data == null || Percentiles == null || QueryDetails == null)
+            return;
+
+        var simulationCounts = Data.Select(item => new ChartPoint
+        {
+            x = item.Key.ToString(),
+            y = item.Value
+        });
+        var thirtiethCount = simulationCounts.Where(item => item.x == Percentiles.Thirtieth.ToString()).Select(item => new ChartPoint
+        {
+            x = item.x,
+            y = item.y
+        });
+        var fiftiethCount = simulationCounts.Where(item => item.x == Percentiles.Fiftieth.ToString()).Select(item => new ChartPoint
+        {
+            x = item.x,
+            y = item.y
+        });
+        var seventiethCount = simulationCounts.Where(item => item.x == Percentiles.Seventieth.ToString()).Select(item => new ChartPoint
+        {
+            x = item.x,
+            y = item.y
+        });
+        var eightyFifthCount = simulationCounts.Where(item => item.x == Percentiles.EightyFifth.ToString()).Select(item => new ChartPoint
+        {
+            x = item.x,
+            y = item.y
+        });
+        var ninetyFifthCount = simulationCounts.Where(item => item.x == Percentiles.NinetyFifth.ToString()).Select(item => new ChartPoint
+        {
+            x = item.x,
+            y = item.y
+        });
+
+        SimulationResults = new SimulationResults
+        {
+            simulations = simulationCounts,
+            thirtieth = thirtiethCount,
+            fiftieth = fiftiethCount,
+            seventieth = seventiethCount,
+            eightyFifth = eightyFifthCount,
+            ninetyFifth = ninetyFifthCount
+        };
+
+        var annotationDetails = new AnnotationModel(QueryDetails, SimulationResults);
+
+        await JSRuntime.InvokeVoidAsync("setupHowManyDays", Id, Title, SimulationResults, annotationDetails);
+    }
+
+    private async Task DownloadCsv()
+    {
+        if (SimulationResults == null || QueryDetails == null || QueryDetails.StartingDate == null ||
+            QueryDetails.Unit == null || QueryDetails.Simulations == null || QueryDetails.EndingDate == null ||
+            QueryDetails.AdoTeam == null || QueryDetails.WorkItemType == null)
+            return;
+
+        var csvData = SimulationResults.ToCsv(QueryDetails.AdoTeam, QueryDetails.WorkItemType, QueryDetails.StartingDate.Value, QueryDetails.EndingDate.Value, QueryDetails.Unit.Value,
+            QueryDetails.Simulations.Value);
+        byte[] file = System.Text.Encoding.UTF8.GetBytes(csvData);
+        await JSRuntime.InvokeVoidAsync("DownloadCsv", "howmanydays.csv", "text/plain", file);
+    }
+
+    private async Task DownloadImage()
+    {
+        await JSRuntime.InvokeVoidAsync("DownloadImage", "howmanydays.png", Id);
+    }
+}
+
+r

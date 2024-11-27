@@ -1,0 +1,17 @@
+Tests/bin
+Tests/obj
+AgileMetricsServer/bin
+AgileMetricsServer/Properties/PublishProfiles/AgileMetricsServer\ -\ Zip Deploy.pubxml.user
+AgileMetricsServer/obj
+AgileMetricsRules/bin
+AgileMetricsRules/obj
+AgileMetricsRules/bin
+AgileMetricsRules/obj
+AdoAnalysisServerApis/bin
+AdoAnalysisServerApis/obj
+NonStandardUnitTesting/bin
+NonStandardUnitTesting/obj
+.vs
+.vscode
+.DS_Store
+.DS_Store

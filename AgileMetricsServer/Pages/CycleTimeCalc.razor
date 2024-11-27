@@ -1,0 +1,258 @@
+﻿@page "/cycletimecalc"
+
+<PageTitle>Cycle Time</PageTitle>
+
+@using AdoAnalysisServerApis
+@using AgileMetricsRules
+@using AgileMetricsServer.Models
+@using AgileMetricsServer.Shared
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@using Microsoft.Extensions.Caching.Memory
+
+@inject ProtectedLocalStorage ProtectedLocalStore
+@inject ProtectedSessionStorage ProtectedSessionStore
+@inject IAdoAnalysisService AdoService
+@inject IMemoryCache InMemoryCache
+
+<h1>Cycle Time</h1>
+
+<body>
+    <EditForm Model="@cycleTimeDataModel" OnValidSubmit="@HandleValidSubmit">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <p>
+            <label>
+                ADO Organization/Project:
+                <InputSelect @bind-Value="cycleTimeDataModel.AdoOrganization">
+                    <option value="">Select...</option>
+                    <option value="@AdoAnalysisService.TrTaxOrganization"> @AdoAnalysisService.TrTaxOrganization </option>
+                    <option value="@AdoAnalysisService.TrTaxDefaultPatagoniaOrganization"> @AdoAnalysisService.TrTaxDefaultPatagoniaOrganization </option>
+                    <option value="@AdoAnalysisService.TrTaxDefaultEflexwareOrganization"> @AdoAnalysisService.TrTaxDefaultEflexwareOrganization </option>
+                </InputSelect>
+            </label>
+            <label>
+                ADO Team:
+                <InputText id="adoteam" @bind-Value="cycleTimeDataModel.AdoTeam" />
+            </label>
+            <label>
+                Work Item Type:
+                <InputSelect @bind-Value="cycleTimeDataModel.WorkItemType">
+                    <option value="">Select...</option>
+                    <option value="@AdoAnalysisService.WorkItemTypeUserStory">User Story</option>
+                    <option value="@AdoAnalysisService.WorkItemTypeBug">Bug</option>
+                    <option value="@AdoAnalysisService.WorkItemTypeUserStoryAndBug">User Story and Bug</option>
+                </InputSelect>
+            </label>
+            <br />
+            <label>
+                From Date:
+                <InputDate id="fromdate" @bind-Value="cycleTimeDataModel.StartingDate" />
+            </label>
+            <label>
+                To Date:
+                <InputDate id="todate" @bind-Value="cycleTimeDataModel.EndingDate" />
+            </label>
+            <label>
+                Exclude these ';' separated Tags:
+                <InputText id="tags" @bind-Value="cycleTimeDataModel.Tags" />
+            </label>
+            <button type="submit">Submit</button>
+        </p>
+
+    </EditForm>
+
+    @if (!dataFetched)
+    {
+        <p><em>Choose values...</em></p>
+    }
+    else if (cycleTimeDataModel.AdoOrganization == AdoAnalysisService.TrTaxOrganization && string.IsNullOrWhiteSpace(adoToken))
+    {
+        <p><em>ADO tr-tax token is not set on the Home page</em></p>
+    }
+    else if ((cycleTimeDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultPatagoniaOrganization ||
+            cycleTimeDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultEflexwareOrganization) &&
+            string.IsNullOrWhiteSpace(adoTrTaxDefaultToken))
+    {
+        <p><em>ADO tr-tax-default token is not set on the Home page</em></p>
+    }
+    else if (notAuthorized)
+    {
+        <p><em>Not authorized. Token is not valid. Maybe it is expired.</em></p>
+    }
+    else if (badRequest)
+    {
+        <p><em>Bad Request. Check that your entries do not have bad data.</em></p>
+    }
+    else if (scatterPlots == null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else
+    {
+        <CycleTimeChart Id="Cycle time" Data="@points" Percentiles="@percentiles" Title="Cycle Time (Days)" QueryDetails="@cycleTimeDataModel">
+        </CycleTimeChart>
+    }
+
+    @code {
+        private ScatterPlotJsonRecord? scatterPlots;
+        private List<ScatterPlotPoint>? points;
+        private Percentiles? percentiles;
+        private CycleTimeDataModel cycleTimeDataModel = new CycleTimeDataModel();
+        private string? adoToken;
+        private string? adoTrTaxDefaultToken;
+        private bool shouldRender = true;
+        private bool dataFetched = false;
+        private bool notAuthorized = false;
+        private bool badRequest = false;
+        private const string adoOrgLocalStoreId = "ctc-adoorg";
+        private const string adoTeamLocalStoreId = "ctc-adoteam";
+        private const string tagsLocalStoreId = "ctc-tags";
+        private const string startingDateSessionStoreId = "ctc-startingdate";
+        private const string endingDateSessionStoreId = "ctc-endingdate";
+        private const string workItemTypeLocalStoreId = "ctc-workitemtype";
+
+        protected override async Task OnInitializedAsync()
+        {
+            var tokenCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoTrTaxTokenLocalStoreId);
+            if (tokenCookie.Success && !string.IsNullOrWhiteSpace(tokenCookie.Value))
+            {
+                adoToken = SettingsModel.ReverseToken(tokenCookie.Value);
+            }
+            var trTaxDefaulTokenCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoTrTaxDefaultTokenLocalStoreId);
+            if (trTaxDefaulTokenCookie.Success && !string.IsNullOrWhiteSpace(trTaxDefaulTokenCookie.Value))
+            {
+                adoTrTaxDefaultToken = SettingsModel.ReverseToken(trTaxDefaulTokenCookie.Value);
+            }
+
+            var adoOrg = await GetAndRemovedGlobalAdoFromProtectedStoreForOneTimeMigration();
+            if (adoOrg.Success && !string.IsNullOrWhiteSpace(adoOrg.Value))
+            {
+                cycleTimeDataModel.AdoOrganization = adoOrg.Value;
+            }
+            adoOrg = await ProtectedLocalStore.GetAsync<string>(adoOrgLocalStoreId);
+            if (adoOrg.Success && !string.IsNullOrWhiteSpace(adoOrg.Value))
+            {
+                cycleTimeDataModel.AdoOrganization = adoOrg.Value;
+            }
+
+            if (string.IsNullOrWhiteSpace(cycleTimeDataModel.AdoOrganization))
+                return;
+
+            var adoTeam = await ProtectedLocalStore.GetAsync<string>(cycleTimeDataModel.AdoOrganization + adoTeamLocalStoreId);
+            if (adoTeam.Success)
+            {
+                cycleTimeDataModel.AdoTeam = adoTeam.Value;
+            }
+            var workItemType = await ProtectedLocalStore.GetAsync<string>(cycleTimeDataModel.AdoOrganization + workItemTypeLocalStoreId);
+            if (workItemType.Success)
+            {
+                cycleTimeDataModel.WorkItemType = workItemType.Value;
+            }
+            var tags = await ProtectedLocalStore.GetAsync<string>(cycleTimeDataModel.AdoOrganization + tagsLocalStoreId);
+            if (tags.Success)
+            {
+                cycleTimeDataModel.Tags = tags.Value;
+            }
+            var startingDate = await ProtectedSessionStore.GetAsync<DateTime>(cycleTimeDataModel.AdoOrganization + startingDateSessionStoreId);
+            if (startingDate.Success)
+            {
+                cycleTimeDataModel.StartingDate = startingDate.Value;
+            }
+            var endingDate = await ProtectedSessionStore.GetAsync<DateTime>(cycleTimeDataModel.AdoOrganization + endingDateSessionStoreId);
+            if (endingDate.Success)
+            {
+                cycleTimeDataModel.EndingDate = endingDate.Value;
+            }
+
+            await GatherData();
+        }
+
+        protected override bool ShouldRender()
+        {
+            var render = shouldRender;
+            if (scatterPlots != null)
+                shouldRender = false;
+            return render;
+        }
+
+        private async Task HandleValidSubmit()
+        {
+            await GatherData();
+        }
+
+        private async Task GatherData()
+        {
+            if (string.IsNullOrWhiteSpace(cycleTimeDataModel.AdoOrganization) || cycleTimeDataModel.AdoTeam == null || cycleTimeDataModel.StartingDate == null || cycleTimeDataModel.EndingDate == null || string.IsNullOrWhiteSpace(cycleTimeDataModel.WorkItemType))
+                return;
+
+            scatterPlots = null;
+            points = null;
+            percentiles = null;
+            shouldRender = true;
+            notAuthorized = false;
+            badRequest = false;
+
+            dataFetched = true;
+
+            string? useToken = "";
+            if (cycleTimeDataModel.AdoOrganization == AdoAnalysisService.TrTaxOrganization)
+                useToken = adoToken;
+            else if (cycleTimeDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultPatagoniaOrganization || cycleTimeDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultEflexwareOrganization)
+                useToken = adoTrTaxDefaultToken;
+
+            if (!string.IsNullOrWhiteSpace(useToken))
+            {
+                scatterPlots = await GetCycleTimeScatterPlotData(cycleTimeDataModel.WorkItemType, cycleTimeDataModel.StartingDate.Value, cycleTimeDataModel.EndingDate.Value, cycleTimeDataModel.Tags ?? string.Empty, cycleTimeDataModel.AdoTeam, useToken, cycleTimeDataModel.AdoOrganization);
+                if (scatterPlots == null)
+                    return;
+                if (scatterPlots.NotAuthorized)
+                    notAuthorized = true;
+                else if (scatterPlots.BadRequest)
+                    badRequest = true;
+                else
+                {
+                    points = ScatterPlot.CalculateCycleTimeScatterPlotPoints(scatterPlots);
+                    percentiles = ScatterPlot.CalculateCycleTimePercentiles(points);
+                }
+            }
+
+            await ProtectedLocalStore.SetAsync(adoOrgLocalStoreId, cycleTimeDataModel.AdoOrganization);
+            await ProtectedLocalStore.SetAsync(cycleTimeDataModel.AdoOrganization + adoTeamLocalStoreId, cycleTimeDataModel.AdoTeam);
+            await ProtectedLocalStore.SetAsync(cycleTimeDataModel.AdoOrganization + workItemTypeLocalStoreId, cycleTimeDataModel.WorkItemType);
+            await ProtectedLocalStore.SetAsync(cycleTimeDataModel.AdoOrganization + tagsLocalStoreId, cycleTimeDataModel.Tags ?? string.Empty);
+            await ProtectedSessionStore.SetAsync(cycleTimeDataModel.AdoOrganization + startingDateSessionStoreId, cycleTimeDataModel.StartingDate);
+            await ProtectedSessionStore.SetAsync(cycleTimeDataModel.AdoOrganization + endingDateSessionStoreId, cycleTimeDataModel.EndingDate);
+        }
+
+        private async Task<ScatterPlotJsonRecord?> GetCycleTimeScatterPlotData(string workItemType, DateTime startingDate, DateTime endingDate, string tags, string adoTeam, string token, string org)
+        {
+            string cacheKey = string.Format("{0}\n{1}\n{2}\n{3}\n{4}\n{5}\n{6}\n", "ct", workItemType, startingDate, endingDate, adoTeam, org, tags);
+
+            ScatterPlotJsonRecord? scatterPlotCache;
+            var cached = InMemoryCache.TryGetValue(cacheKey, out scatterPlotCache);
+            if (!cached || scatterPlotCache == null)
+                scatterPlotCache = await AdoService.GetCycleTimeScatterPlotData(workItemType, startingDate, endingDate, tags, adoTeam, token, org);
+
+            if (!cached && scatterPlotCache != null && !scatterPlotCache.NotAuthorized)
+            {
+                var cacheEntryOptions = new MemoryCacheEntryOptions();
+                cacheEntryOptions.AbsoluteExpiration = new DateTimeOffset(DateTime.Now.AddDays(1).Date);
+                InMemoryCache.Set(cacheKey, scatterPlotCache, cacheEntryOptions);
+            }
+
+            return scatterPlotCache;
+        }
+
+        private async Task<ProtectedBrowserStorageResult<string>> GetAndRemovedGlobalAdoFromProtectedStoreForOneTimeMigration()
+        {
+            var orgCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoOrganizationStoreId);
+            if (orgCookie.Success && !string.IsNullOrWhiteSpace(orgCookie.Value))
+            {
+                await ProtectedLocalStore.DeleteAsync(SettingsModel.adoOrganizationStoreId);
+            }
+
+            return orgCookie;
+        }
+    }
+</body>

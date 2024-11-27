@@ -1,0 +1,27 @@
+﻿@using AgileMetricsRules
+
+@inject IJSRuntime JSRuntime
+
+<canvas id="@Id"></canvas>
+@code {
+    [Parameter]
+    public string? Id { get; set; }
+
+    [Parameter]
+    public AgingWipResults? Data { get; set; }
+
+    [Parameter]
+    public Percentiles? Percentiles { get; set; }
+
+    [Parameter]
+    public string? Title { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Data == null || Percentiles == null)
+            return;
+
+        await JSRuntime.InvokeVoidAsync("setupAging", Id, Title, Data.WorkItems, Data.ColumnInfo, Percentiles);
+    }
+}
+

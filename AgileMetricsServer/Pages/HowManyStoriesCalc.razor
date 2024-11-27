@@ -1,0 +1,297 @@
+﻿@page "/howmanystories"
+
+<PageTitle>How Many Stories?</PageTitle>
+
+@using AdoAnalysisServerApis
+@using AgileMetricsRules
+@using AgileMetricsServer.Models
+@using AgileMetricsServer.Shared
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@using Microsoft.Extensions.Caching.Memory
+
+@inject ProtectedLocalStorage ProtectedLocalStore
+@inject ProtectedSessionStorage ProtectedSessionStore
+@inject IAdoAnalysisService AdoService
+@inject IMemoryCache InMemoryCache
+
+<h1>How Many Stories?</h1>
+
+<body>
+    <EditForm Model="@adoTeamDateUnitAndSims" OnValidSubmit="@HandleValidSubmit">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <p>
+            <label>
+                ADO Organization/Project:
+                <InputSelect @bind-Value="adoTeamDateUnitAndSims.AdoOrganization">
+                    <option value="">Select...</option>
+                    <option value="@AdoAnalysisService.TrTaxOrganization"> @AdoAnalysisService.TrTaxOrganization </option>
+                    <option value="@AdoAnalysisService.TrTaxDefaultPatagoniaOrganization"> @AdoAnalysisService.TrTaxDefaultPatagoniaOrganization </option>
+                    <option value="@AdoAnalysisService.TrTaxDefaultEflexwareOrganization"> @AdoAnalysisService.TrTaxDefaultEflexwareOrganization </option>
+                </InputSelect>
+            </label>
+            <label>
+                ADO Team:
+                <InputText id="areapath" @bind-Value="adoTeamDateUnitAndSims.AdoTeam" />
+            </label>
+            <label>
+                Work Item Type:
+                <InputSelect @bind-Value="adoTeamDateUnitAndSims.WorkItemType">
+                    <option value="">Select...</option>
+                    <option value="@AdoAnalysisService.WorkItemTypeUserStory">User Story</option>
+                    <option value="@AdoAnalysisService.WorkItemTypeBug">Bug</option>
+                    <option value="@AdoAnalysisService.WorkItemTypeUserStoryAndBug">User Story and Bug</option>
+                </InputSelect>
+            </label>
+            <label>
+                From:
+                <InputDate id="fromdate" @bind-Value="adoTeamDateUnitAndSims.StartingDate" />
+            </label>
+            <label>
+                To:
+                <InputDate id="todate" @bind-Value="adoTeamDateUnitAndSims.EndingDate" />
+            </label>
+            <br />
+            <label>
+                For Number of Days:
+                <InputNumber id="unit" @bind-Value="adoTeamDateUnitAndSims.Unit" />
+            </label>
+            <label>
+                Number of Simulations:
+                <InputNumber id="simulations" @bind-Value="adoTeamDateUnitAndSims.Simulations" />
+            </label>
+            <button type="submit">Submit</button>
+        </p>
+
+    </EditForm>
+
+    @if (!dataFetched)
+    {
+        <p><em>Choose values...</em></p>
+    }
+    else if (adoTeamDateUnitAndSims.AdoOrganization == AdoAnalysisService.TrTaxOrganization && string.IsNullOrWhiteSpace(adoToken))
+    {
+        <p><em>ADO tr-tax token is not set on the Home page</em></p>
+    }
+    else if ((adoTeamDateUnitAndSims.AdoOrganization == AdoAnalysisService.TrTaxDefaultPatagoniaOrganization || adoTeamDateUnitAndSims.AdoOrganization == AdoAnalysisService.TrTaxDefaultEflexwareOrganization) && string.IsNullOrWhiteSpace(adoTrTaxDefaultToken))
+    {
+        <p><em>ADO tr-tax-default token is not set on the Home page </em></p>
+    }
+    else if (notAuthorized)
+    {
+        <p><em>Not authorized. Token is not valid. Maybe it is expired.</em></p>
+    }
+    else if (badRequest)
+    {
+        <p><em>Bad Request. Check that your entries do not have bad data.</em></p>
+    }
+    else if (throughputsJson == null || points == null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else
+    {
+        <HowManyStoriesChart Id="How Many Stories" Data="@points" Percentiles="@percentiles" Title="How Many Stories?" QueryDetails="@adoTeamDateUnitAndSims">
+        </HowManyStoriesChart>
+    }
+
+    @code {
+        private ThroughputJsonRecord? throughputsJson;
+        private SortedDictionary<int, int>? points;
+        Percentiles? percentiles;
+        private SimulationsDataModel adoTeamDateUnitAndSims = new SimulationsDataModel();
+        private bool dataFetched = false;
+        private bool shouldRender = true;
+        private bool notAuthorized = false;
+        private bool badRequest = false;
+        private string? adoToken;
+        private string? adoTrTaxDefaultToken;
+        private const string adoOrgLocalStoreId = "hms-adoorg";
+        private const string adoTeamLocalStoreId = "hms-adoteam";
+        private const string workItemTypeLocalStoreId = "hms-workitemtype";
+        private const string simulationsLocalStoreId = "hms-simulations";
+        private const string startingDateSessionStoreId = "hms-startingdate";
+        private const string endingDateSessionStoreId = "hms-endingdate";
+        private const string howManyDaysSessionStoreId = "hms-howmanydays";
+
+        protected override async Task OnInitializedAsync()
+        {
+            var tokenCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoTrTaxTokenLocalStoreId);
+            if (tokenCookie.Success && !string.IsNullOrWhiteSpace(tokenCookie.Value))
+            {
+                adoToken = SettingsModel.ReverseToken(tokenCookie.Value);
+            }
+            var trTaxDefaulTokenCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoTrTaxDefaultTokenLocalStoreId);
+            if (trTaxDefaulTokenCookie.Success && !string.IsNullOrWhiteSpace(trTaxDefaulTokenCookie.Value))
+            {
+                adoTrTaxDefaultToken = SettingsModel.ReverseToken(trTaxDefaulTokenCookie.Value);
+            }
+
+            var adoOrg = await GetAndRemovedGlobalAdoFromProtectedStoreForOneTimeMigration();
+            if (adoOrg.Success && !string.IsNullOrWhiteSpace(adoOrg.Value))
+            {
+                adoTeamDateUnitAndSims.AdoOrganization = adoOrg.Value;
+            }
+            adoOrg = await ProtectedLocalStore.GetAsync<string>(adoOrgLocalStoreId);
+            if (adoOrg.Success && !string.IsNullOrWhiteSpace(adoOrg.Value))
+            {
+                adoTeamDateUnitAndSims.AdoOrganization = adoOrg.Value;
+            }
+
+            if (string.IsNullOrWhiteSpace(adoTeamDateUnitAndSims.AdoOrganization))
+                return;
+
+            var adoTeam = await ProtectedLocalStore.GetAsync<string>(adoTeamDateUnitAndSims.AdoOrganization + adoTeamLocalStoreId);
+            if (adoTeam.Success)
+            {
+                adoTeamDateUnitAndSims.AdoTeam = adoTeam.Value;
+            }
+            var workItemType = await ProtectedLocalStore.GetAsync<string>(adoTeamDateUnitAndSims.AdoOrganization + workItemTypeLocalStoreId);
+            if (workItemType.Success)
+            {
+                adoTeamDateUnitAndSims.WorkItemType = workItemType.Value;
+            }
+            var simulations = await ProtectedLocalStore.GetAsync<int>(adoTeamDateUnitAndSims.AdoOrganization + simulationsLocalStoreId);
+            if (simulations.Success)
+            {
+                adoTeamDateUnitAndSims.Simulations = simulations.Value;
+            }
+            var startingDate = await ProtectedSessionStore.GetAsync<DateTime>(adoTeamDateUnitAndSims.AdoOrganization + startingDateSessionStoreId);
+            if (startingDate.Success)
+            {
+                adoTeamDateUnitAndSims.StartingDate = startingDate.Value;
+            }
+            var endingDate = await ProtectedSessionStore.GetAsync<DateTime>(adoTeamDateUnitAndSims.AdoOrganization + endingDateSessionStoreId);
+            if (endingDate.Success)
+            {
+                adoTeamDateUnitAndSims.EndingDate = endingDate.Value;
+            }
+            var howManyStories = await ProtectedSessionStore.GetAsync<int>(adoTeamDateUnitAndSims.AdoOrganization + howManyDaysSessionStoreId);
+            if (howManyStories.Success)
+            {
+                adoTeamDateUnitAndSims.Unit = howManyStories.Value;
+            }
+
+            await GatherData();
+        }
+
+        protected override bool ShouldRender()
+        {
+            var render = shouldRender;
+            if (points != null)
+                shouldRender = false;
+            return render;
+        }
+
+        private async Task HandleValidSubmit()
+        {
+            await GatherData();
+        }
+
+        private async Task GatherData()
+        {
+            if (string.IsNullOrWhiteSpace(adoTeamDateUnitAndSims.AdoOrganization) ||
+                adoTeamDateUnitAndSims.AdoTeam == null || adoTeamDateUnitAndSims.StartingDate == null ||
+                adoTeamDateUnitAndSims.Unit == null || adoTeamDateUnitAndSims.Simulations == null ||
+                adoTeamDateUnitAndSims.EndingDate == null || string.IsNullOrWhiteSpace(adoTeamDateUnitAndSims.WorkItemType))
+                return;
+
+            throughputsJson = null;
+            points = null;
+            percentiles = null;
+            shouldRender = true;
+            notAuthorized = false;
+            badRequest = false;
+
+            dataFetched = true;
+
+            string? useToken = "";
+            if (adoTeamDateUnitAndSims.AdoOrganization == AdoAnalysisService.TrTaxOrganization)
+                useToken = adoToken;
+            else if (adoTeamDateUnitAndSims.AdoOrganization == AdoAnalysisService.TrTaxDefaultPatagoniaOrganization || adoTeamDateUnitAndSims.AdoOrganization == AdoAnalysisService.TrTaxDefaultEflexwareOrganization)
+                useToken = adoTrTaxDefaultToken;
+
+            if (!string.IsNullOrWhiteSpace(useToken))
+            {
+                throughputsJson = await GetThroughputData(adoTeamDateUnitAndSims.WorkItemType, adoTeamDateUnitAndSims.StartingDate.Value, adoTeamDateUnitAndSims.EndingDate.Value, adoTeamDateUnitAndSims.AdoTeam, useToken, adoTeamDateUnitAndSims.AdoOrganization);
+                if (throughputsJson == null)
+                    return;
+                if (throughputsJson.NotAuthorized)
+                {
+                    notAuthorized = true;
+                }
+                else if (throughputsJson.BadRequest)
+                {
+                    badRequest = true;
+                }
+                else
+                {
+                    points = await SimulationOfHowManiItemsCompleteInGivenNumberOfDaysAsync(throughputsJson, adoTeamDateUnitAndSims.WorkItemType, adoTeamDateUnitAndSims.StartingDate.Value,
+                        adoTeamDateUnitAndSims.EndingDate.Value, adoTeamDateUnitAndSims.AdoTeam, adoTeamDateUnitAndSims.AdoOrganization, adoTeamDateUnitAndSims.Simulations.Value, adoTeamDateUnitAndSims.Unit.Value);
+                    percentiles = AgileMetricsRules.Simulations.CalculatePercentilesForHowManyStories(points);
+                }
+            }
+
+            await ProtectedLocalStore.SetAsync(adoOrgLocalStoreId, adoTeamDateUnitAndSims.AdoOrganization);
+            await ProtectedLocalStore.SetAsync(adoTeamDateUnitAndSims.AdoOrganization + adoTeamLocalStoreId, adoTeamDateUnitAndSims.AdoTeam);
+            await ProtectedLocalStore.SetAsync(adoTeamDateUnitAndSims.AdoOrganization + workItemTypeLocalStoreId, adoTeamDateUnitAndSims.WorkItemType);
+            await ProtectedLocalStore.SetAsync(adoTeamDateUnitAndSims.AdoOrganization + simulationsLocalStoreId, adoTeamDateUnitAndSims.Simulations);
+            await ProtectedSessionStore.SetAsync(adoTeamDateUnitAndSims.AdoOrganization + startingDateSessionStoreId, adoTeamDateUnitAndSims.StartingDate);
+            await ProtectedSessionStore.SetAsync(adoTeamDateUnitAndSims.AdoOrganization + endingDateSessionStoreId, adoTeamDateUnitAndSims.EndingDate);
+            await ProtectedSessionStore.SetAsync(adoTeamDateUnitAndSims.AdoOrganization + howManyDaysSessionStoreId, adoTeamDateUnitAndSims.Unit);
+        }
+
+        private async Task<SortedDictionary<int, int>> SimulationOfHowManiItemsCompleteInGivenNumberOfDaysAsync(ThroughputJsonRecord throughputsJson, string workItemType, DateTime startingDate, DateTime endingDate, string adoTeam, string org, int simulations, int days)
+        {
+            var cacheKey = string.Format("{0}\n{1}\n{2}\n{3}\n{4}\n{5}\n{6}\n{7}\n{8}\n", "hms", workItemType, startingDate, endingDate, adoTeam, org, simulations, days, string.Empty);
+
+            SortedDictionary<int, int>? simulationCache;
+            var cached = InMemoryCache.TryGetValue(cacheKey, out simulationCache);
+            if (!cached || simulationCache == null)
+            {
+                var throughputs = AgileMetricsRules.Throughput.CalculateThroughputPoints(throughputsJson, startingDate, DateTime.Now.Date);
+                simulationCache = await AgileMetricsRules.Simulations.SimulationOfHowManyItemCompleteInGivenNumberOfDaysAsync(simulations, throughputs, days);
+            }
+
+            if (!cached && simulationCache != null && simulations >= 10000)
+            {
+                var cacheEntryOptions = new MemoryCacheEntryOptions();
+                cacheEntryOptions.AbsoluteExpiration = new DateTimeOffset(DateTime.Now.AddHours(1));
+                InMemoryCache.Set(cacheKey, simulationCache, cacheEntryOptions);
+            }
+
+            return simulationCache ?? new SortedDictionary<int, int>();
+        }
+
+        private async Task<ThroughputJsonRecord?> GetThroughputData(string workItemType, DateTime startingDate, DateTime endingDate, string adoTeam, string token, string org)
+        {
+            var cacheKey = string.Format("{0}\n{1}\n{2}\n{3}\n{4}\n{5}\n{6}\n", "hms", workItemType, startingDate, endingDate, adoTeam, org, string.Empty);
+
+            ThroughputJsonRecord? throughputCache;
+            var cached = InMemoryCache.TryGetValue(cacheKey, out throughputCache);
+            if (!cached || throughputCache == null)
+                throughputCache = await AdoService.GetThroughputData(workItemType, startingDate, endingDate, adoTeam, token, org);
+
+            if (!cached && throughputCache != null && !throughputCache.NotAuthorized)
+            {
+                var cacheEntryOptions = new MemoryCacheEntryOptions();
+                cacheEntryOptions.AbsoluteExpiration = new DateTimeOffset(DateTime.Now.AddDays(1).Date);
+                InMemoryCache.Set(cacheKey, throughputCache, cacheEntryOptions);
+            }
+
+            return throughputCache;
+        }
+
+        private async Task<ProtectedBrowserStorageResult<string>> GetAndRemovedGlobalAdoFromProtectedStoreForOneTimeMigration()
+        {
+            var orgCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoOrganizationStoreId);
+            if (orgCookie.Success && !string.IsNullOrWhiteSpace(orgCookie.Value))
+            {
+                await ProtectedLocalStore.DeleteAsync(SettingsModel.adoOrganizationStoreId);
+            }
+
+            return orgCookie;
+        }
+    }
+</body>

@@ -1,0 +1,53 @@
+﻿@using AgileMetricsRules
+@using AgileMetricsServer.Models
+
+@inject IJSRuntime JSRuntime
+
+<canvas id="@Id"></canvas>
+<p>
+    <button @onclick="DownloadImage">
+        Download Image
+    </button>
+</p>
+@code {
+    [Parameter]
+    public string? Id { get; set; }
+
+    [Parameter]
+    public Dictionary<DateTime, Percentiles>? PercentileSeries { get; set; }
+
+    [Parameter]
+    public string? Title { get; set; }
+
+    [Parameter]
+    public DeliveryEfficiencyDataModel? QueryDetails { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (PercentileSeries == null || QueryDetails == null)
+            return;
+
+        var results95 = new DeliveryEfficiencyResults("95th", PercentileSeries.Select(item => new DateValuePair(item.Key, item.Value.NinetyFifth)).OrderBy(item=>item.x).ToArray());
+        var results85 = new DeliveryEfficiencyResults("85th", PercentileSeries.Select(item => new DateValuePair(item.Key, item.Value.EightyFifth)).OrderBy(item => item.x).ToArray());
+        var results70 = new DeliveryEfficiencyResults("70th", PercentileSeries.Select(item => new DateValuePair(item.Key, item.Value.Seventieth)).OrderBy(item => item.x).ToArray());
+        var results50 = new DeliveryEfficiencyResults("50th", PercentileSeries.Select(item => new DateValuePair(item.Key, item.Value.Fiftieth)).OrderBy(item => item.x).ToArray());
+        var results30 = new DeliveryEfficiencyResults("30th", PercentileSeries.Select(item => new DateValuePair(item.Key, item.Value.Thirtieth)).OrderBy(item => item.x).ToArray());
+
+        if (results95.percentileData.Any(item => item == null) ||
+            results85.percentileData.Any(item => item == null) ||
+            results70.percentileData.Any(item => item == null) ||
+            results50.percentileData.Any(item => item == null) ||
+            results30.percentileData.Any(item => item == null))
+            return;
+
+        var annotation = new AnnotationModel(QueryDetails, results95);
+
+        await JSRuntime.InvokeVoidAsync("setupDeliveryEfficiency", Id, Title, results95, results85, results70, results50, results30, annotation);
+    }
+
+    private async Task DownloadImage()
+    {
+        await JSRuntime.InvokeVoidAsync("DownloadImage", "deliveryefficiency.png", Id);
+    }
+}
+

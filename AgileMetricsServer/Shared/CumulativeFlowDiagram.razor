@@ -1,0 +1,51 @@
+﻿@using AgileMetricsRules
+@using AgileMetricsServer.Models
+
+@inject IJSRuntime JSRuntime
+
+<canvas id="@Id"></canvas>
+<p>
+    <button @onclick="DownloadImage">
+        Download Image
+    </button>
+</p>
+@code {
+    [Parameter]
+    public string? Id { get; set; }
+
+    [Parameter]
+    public Dictionary<DateTime, Dictionary<string, int>>? Data { get; set; }
+
+    [Parameter]
+    public List<string>? Columns { get; set; }
+
+    [Parameter]
+    public string? Title { get; set; }
+
+    [Parameter]
+    public CumulativeFlowDataModel? QueryDetails { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Data == null || Columns == null || QueryDetails == null)
+            return;
+
+        var array = CumulativeFlow.PutItAllTogtherForAChart(Data, Columns);
+
+        CumulativeFlow.AddPercentagesToLabels(array);
+
+        if (array == null)
+            return;
+
+        string title = string.Format("{0} - {1} for the last {2}", Title, QueryDetails.AdoTeam, QueryDetails.TimeSpan);
+
+        await JSRuntime.InvokeVoidAsync("setupCumulativeFlow", Id, title, array);
+    }
+
+    private async Task DownloadImage()
+    {
+        await JSRuntime.InvokeVoidAsync("DownloadImage", "cumulativeflow.png", Id);
+    }
+
+}
+

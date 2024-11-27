@@ -1,0 +1,49 @@
+﻿@using AgileMetricsRules
+@using AgileMetricsServer.Models
+
+@inject IJSRuntime JSRuntime
+
+<canvas id="@Id"></canvas>
+<p>
+    <button @onclick="DownloadImage">
+        Download Image
+    </button>
+</p>
+@code {
+    [Parameter]
+    public string? Id { get; set; }
+
+    [Parameter]
+    public List<ScatterPlotPoint>? Data { get; set; }
+
+    [Parameter]
+    public Percentiles? Percentiles { get; set; }
+
+    [Parameter]
+    public string? Title { get; set; }
+
+    [Parameter]
+    public CycleTimeDataModel? QueryDetails { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Data == null || Percentiles == null || QueryDetails == null)
+            return;
+
+        var array = Data.Select(item => new CycleTimeResults(item.WorkItemId, item.CompletedDate, item.CycleTime, Percentiles.Thirtieth,
+            Percentiles.Fiftieth, Percentiles.Seventieth, Percentiles.EightyFifth, Percentiles.NinetyFifth));
+
+        if (array == null)
+            return;
+
+        var annotation = new AnnotationModel(cycleTimeDetails: QueryDetails, cycleTimeResults: array);
+
+        await JSRuntime.InvokeVoidAsync("setupCycleTime", Id, Title, array, annotation);
+    }
+
+    private async Task DownloadImage()
+    {
+        await JSRuntime.InvokeVoidAsync("DownloadImage", "cycletime.png", Id);
+    }
+}
+

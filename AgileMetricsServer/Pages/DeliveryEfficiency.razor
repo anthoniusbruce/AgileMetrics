@@ -1,0 +1,279 @@
+﻿@page "/deliveryefficiency"
+
+<PageTitle>Delivery Efficiency</PageTitle>
+
+@using AdoAnalysisServerApis
+@using AgileMetricsRules
+@using AgileMetricsServer.Models
+@using AgileMetricsServer.Shared
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@using Microsoft.Extensions.Caching.Memory
+
+@inject IAdoAnalysisService AdoService
+@inject ProtectedLocalStorage ProtectedLocalStore
+@inject ProtectedSessionStorage ProtectedSessionStore
+@inject IMemoryCache InMemoryCache
+
+<h1>Delivery Efficiency</h1>
+
+<body>
+    <EditForm Model="@deliveryEfficiencyDataModel" OnValidSubmit="@HandleValidSubmit">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+        <p>
+            <label>
+                ADO Organization/Project:
+                <InputSelect @bind-Value="deliveryEfficiencyDataModel.AdoOrganization">
+                    <option value="">Select...</option>
+                    <option value="@AdoAnalysisService.TrTaxOrganization"> @AdoAnalysisService.TrTaxOrganization </option>
+                    <option value="@AdoAnalysisService.TrTaxDefaultPatagoniaOrganization"> @AdoAnalysisService.TrTaxDefaultPatagoniaOrganization </option>
+                    <option value="@AdoAnalysisService.TrTaxDefaultEflexwareOrganization"> @AdoAnalysisService.TrTaxDefaultEflexwareOrganization </option>
+                </InputSelect>
+            </label>
+            <label>
+                ADO Team:
+                <InputText id="adoteam" @bind-Value="deliveryEfficiencyDataModel.AdoTeam" />
+            </label>
+            <label>
+                Work Item Type:
+                <InputSelect @bind-Value="deliveryEfficiencyDataModel.WorkItemType">
+                    <option value="">Select...</option>
+                    <option value="@AdoAnalysisService.WorkItemTypeUserStory">User Story</option>
+                    <option value="@AdoAnalysisService.WorkItemTypeBug">Bug</option>
+                    <option value="@AdoAnalysisService.WorkItemTypeUserStoryAndBug">User Story and Bug</option>
+                </InputSelect>
+            </label>
+            <label>
+                Cycle Time Span:
+                <InputNumber id="cycletimespan" @bind-Value="deliveryEfficiencyDataModel.CycleTimeSpan" />
+                days
+            </label>
+            <br />
+            <label>
+                Evaluation Period Start:
+                <InputDate id="evalperiodstart" @bind-Value="deliveryEfficiencyDataModel.EvaluationPeriodStart" />
+            </label>
+            <label>
+                End:
+                <InputDate id="evalperiodend" @bind-Value="deliveryEfficiencyDataModel.EvaluationPeriodEnd" />
+            </label>
+            <label>
+                Sample Frequency:
+                <InputSelect @bind-Value="deliveryEfficiencyDataModel.EvaluationPeriodFrequency">
+                    <option value="">Select...</option>
+                    <option value="@AdoAnalysisService.FrequencyDay">@AdoAnalysisService.FrequencyDay</option>
+                    <option value="@AdoAnalysisService.FrequencyWeek">@AdoAnalysisService.FrequencyWeek</option>
+                    <option value="@AdoAnalysisService.FrequencyMonth">@AdoAnalysisService.FrequencyMonth</option>
+                </InputSelect>
+            </label>
+            <label>
+                Exclude these ';' separated Tags:
+                <InputText id="tags" @bind-Value="deliveryEfficiencyDataModel.Tags" />
+            </label>
+            <button type="submit">Submit</button>
+        </p>
+    </EditForm>
+
+    @if (!dataFetched)
+    {
+        <p><em>Choose values...</em></p>
+    }
+    else if (deliveryEfficiencyDataModel.AdoOrganization == AdoAnalysisService.TrTaxOrganization && string.IsNullOrWhiteSpace(adoToken))
+    {
+        <p><em>ADO tr-tax token is not set on the Home page</em></p>
+    }
+    else if ((deliveryEfficiencyDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultPatagoniaOrganization ||
+            deliveryEfficiencyDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultEflexwareOrganization) &&
+            string.IsNullOrWhiteSpace(adoTrTaxDefaultToken))
+    {
+        <p><em>ADO tr-tax-default token is not set on the Home page</em></p>
+    }
+    else if (notAuthorized)
+    {
+        <p><em>Not authorized. Token is not valid. Maybe it is expired.</em></p>
+    }
+    else if (scatterPlotSeries == null)
+    {
+        <p><em>Loading...</em></p>
+    }
+    else
+    {
+        <DeliveryEfficiencyChart Id="deliveryEfficiency" PercentileSeries="@percentileSeries" Title="Cycle Time Trend" QueryDetails="@deliveryEfficiencyDataModel">
+        </DeliveryEfficiencyChart>
+    }
+
+    @code
+    {
+        private DeliveryEfficiencyDataModel deliveryEfficiencyDataModel = new DeliveryEfficiencyDataModel();
+        private bool dataFetched = false;
+        private bool shouldRender = true;
+        private bool notAuthorized = false;
+        private ScatterPlotSeriesJsonRecord? scatterPlotSeries;
+        private string? adoToken;
+        private string? adoTrTaxDefaultToken;
+        private Dictionary<DateTime, Percentiles>? percentileSeries;
+        private const string adoOrgLocalStoreId = "de-adoorg";
+        private const string adoTeamLocalStoreId = "de-adoteam";
+        private const string workItemTypeLocalStoreId = "de-workitemtype";
+        private const string tagsLocalStoreId = "de-tags";
+        private const string evalStartDateSessionStoreId = "de-evalstartdate";
+        private const string evalEndDateSessionStoreId = "de-evalenddate";
+        private const string cycleTimeSpanSessionStoreId = "de-cycletimespanenddate";
+        private const string frequencySessionStoreId = "de-evalfrequency";
+
+        protected override async Task OnInitializedAsync()
+        {
+            var tokenCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoTrTaxTokenLocalStoreId);
+            if (tokenCookie.Success && !string.IsNullOrWhiteSpace(tokenCookie.Value))
+            {
+                adoToken = SettingsModel.ReverseToken(tokenCookie.Value);
+            }
+            var trTaxDefaulTokenCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoTrTaxDefaultTokenLocalStoreId);
+            if (trTaxDefaulTokenCookie.Success && !string.IsNullOrWhiteSpace(trTaxDefaulTokenCookie.Value))
+            {
+                adoTrTaxDefaultToken = SettingsModel.ReverseToken(trTaxDefaulTokenCookie.Value);
+            }
+
+            var adoOrg = await GetAndRemovedGlobalAdoFromProtectedStoreForOneTimeMigration();
+            if (adoOrg.Success && !string.IsNullOrWhiteSpace(adoOrg.Value))
+            {
+                deliveryEfficiencyDataModel.AdoOrganization = adoOrg.Value;
+            }
+            adoOrg = await ProtectedLocalStore.GetAsync<string>(adoOrgLocalStoreId);
+            if (adoOrg.Success && !string.IsNullOrWhiteSpace(adoOrg.Value))
+            {
+                deliveryEfficiencyDataModel.AdoOrganization = adoOrg.Value;
+            }
+
+            if (string.IsNullOrWhiteSpace(deliveryEfficiencyDataModel.AdoOrganization))
+                return;
+
+            var adoTeam = await ProtectedLocalStore.GetAsync<string>(deliveryEfficiencyDataModel.AdoOrganization + adoTeamLocalStoreId);
+            if (adoTeam.Success)
+            {
+                deliveryEfficiencyDataModel.AdoTeam = adoTeam.Value;
+            }
+            var workItemType = await ProtectedLocalStore.GetAsync<string>(deliveryEfficiencyDataModel.AdoOrganization + workItemTypeLocalStoreId);
+            if (workItemType.Success)
+            {
+                deliveryEfficiencyDataModel.WorkItemType = workItemType.Value;
+            }
+            var tags = await ProtectedLocalStore.GetAsync<string>(deliveryEfficiencyDataModel.AdoOrganization + tagsLocalStoreId);
+            if (tags.Success)
+            {
+                deliveryEfficiencyDataModel.Tags = tags.Value;
+            }
+            var evalPeriodStart = await ProtectedSessionStore.GetAsync<DateTime>(deliveryEfficiencyDataModel.AdoOrganization + evalStartDateSessionStoreId);
+            if (evalPeriodStart.Success)
+            {
+                deliveryEfficiencyDataModel.EvaluationPeriodStart = evalPeriodStart.Value;
+            }
+            var evalPeriodEnd = await ProtectedSessionStore.GetAsync<DateTime>(deliveryEfficiencyDataModel.AdoOrganization + evalEndDateSessionStoreId);
+            if (evalPeriodEnd.Success)
+            {
+                deliveryEfficiencyDataModel.EvaluationPeriodEnd = evalPeriodEnd.Value;
+            }
+            var cycleTimeSpan = await ProtectedSessionStore.GetAsync<int>(deliveryEfficiencyDataModel.AdoOrganization + cycleTimeSpanSessionStoreId);
+            if (cycleTimeSpan.Success)
+            {
+                deliveryEfficiencyDataModel.CycleTimeSpan = cycleTimeSpan.Value;
+            }
+            var evalFrequency = await ProtectedSessionStore.GetAsync<string>(deliveryEfficiencyDataModel.AdoOrganization + frequencySessionStoreId);
+            if (evalFrequency.Success)
+            {
+                deliveryEfficiencyDataModel.EvaluationPeriodFrequency = evalFrequency.Value;
+            }
+
+            await GatherData();
+        }
+
+        protected override bool ShouldRender()
+        {
+            var render = shouldRender;
+            if (scatterPlotSeries != null)
+                shouldRender = false;
+            return render;
+        }
+
+        private async Task HandleValidSubmit()
+        {
+            await GatherData();
+        }
+
+        private async Task GatherData()
+        {
+            if (string.IsNullOrWhiteSpace(deliveryEfficiencyDataModel.AdoOrganization) ||
+                deliveryEfficiencyDataModel.AdoTeam == null || string.IsNullOrWhiteSpace(deliveryEfficiencyDataModel.WorkItemType) ||
+                deliveryEfficiencyDataModel.CycleTimeSpan == null || deliveryEfficiencyDataModel.EvaluationPeriodStart == null ||
+                deliveryEfficiencyDataModel.EvaluationPeriodEnd == null || string.IsNullOrWhiteSpace(deliveryEfficiencyDataModel.EvaluationPeriodFrequency))
+            {
+                return;
+            }
+
+            scatterPlotSeries = null;
+            percentileSeries = null;
+            shouldRender = true;
+            notAuthorized = false;
+
+            dataFetched = true;
+
+            string? useToken = "";
+            if (deliveryEfficiencyDataModel.AdoOrganization == AdoAnalysisService.TrTaxOrganization)
+                useToken = adoToken;
+            else if (deliveryEfficiencyDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultPatagoniaOrganization || deliveryEfficiencyDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultEflexwareOrganization)
+                useToken = adoTrTaxDefaultToken;
+
+            if (!string.IsNullOrWhiteSpace(useToken))
+            {
+                scatterPlotSeries = await GetCycleTimeSeriesScatterPlotData(deliveryEfficiencyDataModel.WorkItemType, deliveryEfficiencyDataModel.CycleTimeSpan.Value, deliveryEfficiencyDataModel.EvaluationPeriodStart.Value, deliveryEfficiencyDataModel.EvaluationPeriodEnd.Value, deliveryEfficiencyDataModel.EvaluationPeriodFrequency, deliveryEfficiencyDataModel.Tags ?? string.Empty, deliveryEfficiencyDataModel.AdoTeam, useToken, deliveryEfficiencyDataModel.AdoOrganization);
+                if (scatterPlotSeries == null)
+                    return;
+                if (!scatterPlotSeries.NotAuthorized)
+                {
+                    percentileSeries = ScatterPlot.CalculateCycleTimePercentilesSeries(scatterPlotSeries.Value);
+                }
+                else
+                    notAuthorized = true;
+            }
+
+            await ProtectedLocalStore.SetAsync(adoOrgLocalStoreId, deliveryEfficiencyDataModel.AdoOrganization);
+            await ProtectedLocalStore.SetAsync(deliveryEfficiencyDataModel.AdoOrganization + adoTeamLocalStoreId, deliveryEfficiencyDataModel.AdoTeam);
+            await ProtectedLocalStore.SetAsync(deliveryEfficiencyDataModel.AdoOrganization + workItemTypeLocalStoreId, deliveryEfficiencyDataModel.WorkItemType);
+            await ProtectedLocalStore.SetAsync(deliveryEfficiencyDataModel.AdoOrganization + tagsLocalStoreId, deliveryEfficiencyDataModel.Tags ?? string.Empty);
+            await ProtectedSessionStore.SetAsync(deliveryEfficiencyDataModel.AdoOrganization + evalStartDateSessionStoreId, deliveryEfficiencyDataModel.EvaluationPeriodStart);
+            await ProtectedSessionStore.SetAsync(deliveryEfficiencyDataModel.AdoOrganization + evalEndDateSessionStoreId, deliveryEfficiencyDataModel.EvaluationPeriodEnd);
+            await ProtectedSessionStore.SetAsync(deliveryEfficiencyDataModel.AdoOrganization + cycleTimeSpanSessionStoreId, deliveryEfficiencyDataModel.CycleTimeSpan);
+            await ProtectedSessionStore.SetAsync(deliveryEfficiencyDataModel.AdoOrganization + frequencySessionStoreId, deliveryEfficiencyDataModel.EvaluationPeriodFrequency);
+        }
+
+        private async Task<ScatterPlotSeriesJsonRecord?> GetCycleTimeSeriesScatterPlotData(string workItemType, int cycleTimeSpan, DateTime evaluationPeriodStart, DateTime evaluationPeriodEnd, string evaluationPeriodFrequency, string tags, string adoTeam, string token, string org)
+        {
+            string cacheKey = string.Format("{0}\n{1}\n{2}\n{3}\n{4}\n{5}\n{6}\n{7}\n{8}\n", "de", workItemType, cycleTimeSpan, evaluationPeriodStart, evaluationPeriodEnd, evaluationPeriodFrequency, adoTeam, org, tags);
+
+            ScatterPlotSeriesJsonRecord? seriesCache;
+            var cached = InMemoryCache.TryGetValue(cacheKey, out seriesCache);
+            if (!cached || seriesCache == null)
+                seriesCache = await AdoService.GetCycleTimeSeriesScatterPlotData(workItemType, cycleTimeSpan, evaluationPeriodStart, evaluationPeriodEnd, evaluationPeriodFrequency, tags, adoTeam, token, org);
+
+            if (!cached && seriesCache != null && !seriesCache.NotAuthorized)
+            {
+                var cacheEntryOptions = new MemoryCacheEntryOptions();
+                cacheEntryOptions.AbsoluteExpiration = new DateTimeOffset(DateTime.Now.AddDays(1).Date);
+                InMemoryCache.Set(cacheKey, seriesCache, cacheEntryOptions);
+            }
+
+            return seriesCache;
+        }
+
+        private async Task<ProtectedBrowserStorageResult<string>> GetAndRemovedGlobalAdoFromProtectedStoreForOneTimeMigration()
+        {
+            var orgCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoOrganizationStoreId);
+            if (orgCookie.Success && !string.IsNullOrWhiteSpace(orgCookie.Value))
+            {
+                await ProtectedLocalStore.DeleteAsync(SettingsModel.adoOrganizationStoreId);
+            }
+
+            return orgCookie;
+        }
+    }
+</body>

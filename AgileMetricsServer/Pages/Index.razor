@@ -1,0 +1,97 @@
+﻿@page "/"
+
+<PageTitle>Agile Metrics</PageTitle>
+
+@using AdoAnalysisServerApis
+@using AgileMetricsServer.Models
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+
+@inject ProtectedLocalStorage ProtectedLocalStore
+@inject ProtectedSessionStorage ProtectedSessionStore
+@inject IAdoAnalysisService AdoService
+
+<h1>Working Toward Predictability</h1>
+
+A consistent process leads to predictability
+<br />
+<br />
+<body>
+    <EditForm Model="@settingsModel" OnValidSubmit="@HandleValidSubmit">
+        <DataAnnotationsValidator />
+        <ValidationSummary />
+
+        <p>
+            <h3>Token settings</h3>
+            <label>
+                ADO Token for tr-tax Org:
+                <InputText id="trtaxtoken" @bind-Value="settingsModel.AdoTrTaxToken" />
+            </label>
+            <br />
+            <label>
+                ADO Token for tr-tax-default Org:
+                <InputText id="trtaxdefaulttoken" @bind-Value="settingsModel.AdoTrTaxDefaultToken" />
+            </label>
+            <br />
+            <button type="submit">Submit</button>
+        </p>
+    </EditForm>
+
+    @if (notAuthorizedTrTax)
+    {
+        <p><em>tr-tax not authorized. Token is not valid. Maybe it is expired.</em></p>
+    }
+
+    @if (notAuthorizedTrTaxDefault)
+    {
+        <p><em>tr-tax-default not authorized. Token is not valid. Maybe it is expired.</em></p>
+    }
+
+    @code {
+        private SettingsModel settingsModel = new SettingsModel();
+        private bool notAuthorizedTrTax = false;
+        private bool notAuthorizedTrTaxDefault = false;
+
+        protected override async Task OnInitializedAsync()
+        {
+            var token = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoTrTaxTokenLocalStoreId);
+            if (token.Success && !string.IsNullOrWhiteSpace(token.Value))
+            {
+                settingsModel.AdoTrTaxToken = SettingsModel.ReverseToken(token.Value);
+            }
+            var trTaxDefaultToken = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoTrTaxDefaultTokenLocalStoreId);
+            if (trTaxDefaultToken.Success && !string.IsNullOrWhiteSpace(trTaxDefaultToken.Value))
+            {
+                settingsModel.AdoTrTaxDefaultToken = SettingsModel.ReverseToken(trTaxDefaultToken.Value);
+            }
+        }
+
+        private async Task HandleValidSubmit()
+        {
+            notAuthorizedTrTax = false;
+            if (!string.IsNullOrWhiteSpace(settingsModel.AdoTrTaxToken))
+            {
+                var result = await AdoService.GetMetadata(settingsModel.AdoTrTaxToken, AdoAnalysisService.TrTaxOrganization);
+                if (result.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                {
+                    notAuthorizedTrTax = true;
+                    return;
+                }
+            }
+            notAuthorizedTrTaxDefault = false;
+            if (!string.IsNullOrWhiteSpace(settingsModel.AdoTrTaxDefaultToken))
+            {
+                var result = await AdoService.GetMetadata(settingsModel.AdoTrTaxDefaultToken, AdoAnalysisService.TrTaxDefaultPatagoniaOrganization);
+                if (result.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                {
+                    notAuthorizedTrTaxDefault = true;
+                    return;
+                }
+            }
+
+            if (settingsModel.AdoTrTaxToken != null)
+                await ProtectedLocalStore.SetAsync(SettingsModel.adoTrTaxTokenLocalStoreId, SettingsModel.ReverseToken(settingsModel.AdoTrTaxToken));
+            if (settingsModel.AdoTrTaxDefaultToken != null)
+                await ProtectedLocalStore.SetAsync(SettingsModel.adoTrTaxDefaultTokenLocalStoreId, SettingsModel.ReverseToken(settingsModel.AdoTrTaxDefaultToken));
+        }
+    }
+</body>
