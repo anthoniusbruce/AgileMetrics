@@ -16,21 +16,13 @@
 
 <h1>Cumulative Flow Diagram</h1>
 <i>Wait for it... this one takes a while to load</i>
+
 <body>
     <EditForm Model="@cumulativeFlowDataModel" OnValidSubmit="@HandleValidSubmit">
         <DataAnnotationsValidator />
         <ValidationSummary />
 
         <p>
-            <label>
-                ADO Organization/Project:
-                <InputSelect @bind-Value="cumulativeFlowDataModel.AdoOrganization">
-                    <option value="">Select...</option>
-                    <option value="@AdoAnalysisService.TrTaxOrganization"> @AdoAnalysisService.TrTaxOrganization </option>
-                    <option value="@AdoAnalysisService.TrTaxDefaultPatagoniaOrganization"> @AdoAnalysisService.TrTaxDefaultPatagoniaOrganization </option>
-                    <option value="@AdoAnalysisService.TrTaxDefaultEflexwareOrganization"> @AdoAnalysisService.TrTaxDefaultEflexwareOrganization </option>
-                </InputSelect>
-            </label>
             <label>
                 ADO Team:
                 <InputText id="adoteam" @bind-Value="cumulativeFlowDataModel.AdoTeam" />
@@ -53,15 +45,9 @@
     {
         <p><em>Choose values...</em></p>
     }
-    else if (cumulativeFlowDataModel.AdoOrganization == AdoAnalysisService.TrTaxOrganization && string.IsNullOrWhiteSpace(adoTrTaxToken))
+    else if (string.IsNullOrWhiteSpace(adoToken))
     {
-        <p><em>ADO tr-tax token is not set on the Home page</em></p>
-    }
-    else if ((cumulativeFlowDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultPatagoniaOrganization ||
-            cumulativeFlowDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultEflexwareOrganization) &&
-            string.IsNullOrWhiteSpace(adoTrTaxDefaultToken))
-    {
-        <p><em>ADO tr-tax-default token is not set on the Home page</em></p>
+        <p><em>ADO token is not set on the Home page</em></p>
     }
     else if (notAuthorized)
     {
@@ -77,7 +63,8 @@
     }
     else
     {
-        <CumulativeFlowDiagram Id="Cumulative Flow Diagram" Data="@aggregatedCfd" Columns="@columnOrder" Title="Cumulative Flow Diagram" QueryDetails="@cumulativeFlowDataModel">
+        <CumulativeFlowDiagram Id="Cumulative Flow Diagram" Data="@aggregatedCfd" Columns="@columnOrder"
+            Title="Cumulative Flow Diagram" QueryDetails="@cumulativeFlowDataModel">
         </CumulativeFlowDiagram>
     }
 
@@ -87,8 +74,7 @@
         private Dictionary<DateTime, Dictionary<string, int>>? aggregatedCfd;
         private List<string>? columnOrder;
         private CumulativeFlowDataModel cumulativeFlowDataModel = new CumulativeFlowDataModel();
-        private string? adoTrTaxToken;
-        private string? adoTrTaxDefaultToken;
+        private string? adoToken;
         private bool shouldRender = true;
         private bool dataFetched = false;
         private bool notAuthorized = false;
@@ -99,32 +85,18 @@
 
         protected override async Task OnInitializedAsync()
         {
-            var tokenCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoTrTaxTokenLocalStoreId);
+            var tokenCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoTokenLocalStoreId);
             if (tokenCookie.Success && !string.IsNullOrWhiteSpace(tokenCookie.Value))
             {
-                adoTrTaxToken = SettingsModel.ReverseToken(tokenCookie.Value);
-            }
-            var trTaxDefaulTokenCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoTrTaxDefaultTokenLocalStoreId);
-            if (trTaxDefaulTokenCookie.Success && !string.IsNullOrWhiteSpace(trTaxDefaulTokenCookie.Value))
-            {
-                adoTrTaxDefaultToken = SettingsModel.ReverseToken(trTaxDefaulTokenCookie.Value);
+                adoToken = SettingsModel.ReverseToken(tokenCookie.Value);
             }
 
-            var adoOrg = await ProtectedLocalStore.GetAsync<string>(adoOrgLocalStoreId);
-            if (adoOrg.Success && !string.IsNullOrWhiteSpace(adoOrg.Value))
-            {
-                cumulativeFlowDataModel.AdoOrganization = adoOrg.Value;
-            }
-
-            if (string.IsNullOrWhiteSpace(cumulativeFlowDataModel.AdoOrganization))
-                return;
-
-            var adoTeam = await ProtectedLocalStore.GetAsync<string>(cumulativeFlowDataModel.AdoOrganization + adoTeamLocalStoreId);
+            var adoTeam = await ProtectedLocalStore.GetAsync<string>(adoTeamLocalStoreId);
             if (adoTeam.Success)
             {
                 cumulativeFlowDataModel.AdoTeam = adoTeam.Value;
             }
-            var timeSpan = await ProtectedSessionStore.GetAsync<string>(cumulativeFlowDataModel.AdoOrganization + timeSpanSessionStoreId);
+            var timeSpan = await ProtectedSessionStore.GetAsync<string>(timeSpanSessionStoreId);
             if (timeSpan.Success)
             {
                 cumulativeFlowDataModel.TimeSpan = timeSpan.Value;
@@ -148,8 +120,7 @@
 
         private async Task GatherData()
         {
-            if (string.IsNullOrWhiteSpace(cumulativeFlowDataModel.AdoOrganization) ||
-                cumulativeFlowDataModel.AdoTeam == null || string.IsNullOrWhiteSpace(cumulativeFlowDataModel.TimeSpan))
+            if (cumulativeFlowDataModel.AdoTeam == null || string.IsNullOrWhiteSpace(cumulativeFlowDataModel.TimeSpan))
                 return;
 
             cumulativeFlowJson = null;
@@ -162,15 +133,9 @@
 
             dataFetched = true;
 
-            string? useToken = "";
-            if (cumulativeFlowDataModel.AdoOrganization == AdoAnalysisService.TrTaxOrganization)
-                useToken = adoTrTaxToken;
-            else if (cumulativeFlowDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultPatagoniaOrganization || cumulativeFlowDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultEflexwareOrganization)
-                useToken = adoTrTaxDefaultToken;
-
-            if (!string.IsNullOrWhiteSpace(useToken))
+            if (!string.IsNullOrWhiteSpace(adoToken))
             {
-                columnsJson = await GetColumnData(cumulativeFlowDataModel.AdoOrganization, useToken, cumulativeFlowDataModel.AdoTeam);
+                columnsJson = await GetColumnData(adoToken, cumulativeFlowDataModel.AdoTeam);
                 if (columnsJson == null)
                     return;
                 if (columnsJson.NotAuthorized)
@@ -179,7 +144,8 @@
                     badRequest = true;
                 else
                 {
-                    cumulativeFlowJson = await GetCumulativeFlowData(cumulativeFlowDataModel.AdoOrganization, useToken, cumulativeFlowDataModel.AdoTeam, cumulativeFlowDataModel.TimeSpan);
+                    cumulativeFlowJson = await GetCumulativeFlowData(adoToken, cumulativeFlowDataModel.AdoTeam,
+                    cumulativeFlowDataModel.TimeSpan);
                     if (cumulativeFlowJson == null)
                     {
                         columnsJson = null;
@@ -207,20 +173,19 @@
                     }
                 }
 
-                await ProtectedLocalStore.SetAsync(adoOrgLocalStoreId, cumulativeFlowDataModel.AdoOrganization);
-                await ProtectedLocalStore.SetAsync(cumulativeFlowDataModel.AdoOrganization + adoTeamLocalStoreId, cumulativeFlowDataModel.AdoTeam);
-                await ProtectedSessionStore.SetAsync(cumulativeFlowDataModel.AdoOrganization + timeSpanSessionStoreId, cumulativeFlowDataModel.TimeSpan);
+                await ProtectedLocalStore.SetAsync(adoTeamLocalStoreId, cumulativeFlowDataModel.AdoTeam);
+                await ProtectedSessionStore.SetAsync(timeSpanSessionStoreId, cumulativeFlowDataModel.TimeSpan);
             }
         }
 
-        private async Task<ColumnJsonRecord?> GetColumnData(string org, string token, string team)
+        private async Task<ColumnJsonRecord?> GetColumnData(string token, string team)
         {
-            var cacheKey = string.Format("{0}\n{1}\n{2}\n", "cfd", org, team);
+            var cacheKey = string.Format("{0}\n{1}\n", "cfd", team);
 
             ColumnJsonRecord? columnCache;
             var cached = InMemoryCache.TryGetValue(cacheKey, out columnCache);
             if (!cached || columnCache == null)
-                columnCache = await AdoService.GetColumnData(org, token, team);
+                columnCache = await AdoService.GetColumnData(token, team);
 
             if (!cached && columnCache != null && !columnCache.NotAuthorized)
             {
@@ -232,14 +197,14 @@
             return columnCache;
         }
 
-        private async Task<CumulativeFlowJsonRecord?> GetCumulativeFlowData(string org, string token, string team, string timeSpan)
+        private async Task<CumulativeFlowJsonRecord?> GetCumulativeFlowData(string token, string team, string timeSpan)
         {
-            var cacheKey = string.Format("{0}\n{1}\n{2}\n{3}\n", "cfd", org, team, timeSpan);
+            var cacheKey = string.Format("{0}\n{1}\n{2}\n", "cfd", team, timeSpan);
 
             CumulativeFlowJsonRecord? cfdCache;
             var cached = InMemoryCache.TryGetValue(cacheKey, out cfdCache);
             if (!cached || cfdCache == null)
-                cfdCache = await AdoService.GetCumulativeFlowData(org, token, team, timeSpan);
+                cfdCache = await AdoService.GetCumulativeFlowData(token, team, timeSpan);
 
             if (!cached && cfdCache != null && !cfdCache.NotAuthorized)
             {

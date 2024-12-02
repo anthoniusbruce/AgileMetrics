@@ -3,11 +3,8 @@ using System.ComponentModel.DataAnnotations;
 
 namespace AgileMetricsServer.Models
 {
-	public class CumulativeFlowDataModel
-	{
-        [Required(ErrorMessage = "Ado Organization field is required")]
-        public string? AdoOrganization { get; set; }
-
+    public class CumulativeFlowDataModel
+    {
         [Required(ErrorMessage = "Ado Team field is required. ")]
         public string? AdoTeam { get; set; }
 

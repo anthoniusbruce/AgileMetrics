@@ -25,15 +25,6 @@
         <br />
         <p>
             <label>
-                ADO Organization/Project:
-                <InputSelect @bind-Value="featureProgressDataModel.AdoOrganization">
-                    <option value="">Select...</option>
-                    <option value="@AdoAnalysisService.TrTaxOrganization"> @AdoAnalysisService.TrTaxOrganization </option>
-                    <option value="@AdoAnalysisService.TrTaxDefaultPatagoniaOrganization"> @AdoAnalysisService.TrTaxDefaultPatagoniaOrganization </option>
-                    <option value="@AdoAnalysisService.TrTaxDefaultEflexwareOrganization"> @AdoAnalysisService.TrTaxDefaultEflexwareOrganization </option>
-                </InputSelect>
-            </label>
-            <label>
                 Feature ID(s):
                 <InputText id="featureids" @bind-Value="featureProgressDataModel.FeatureIds" />
             </label>
@@ -60,15 +51,9 @@
     {
         <p><em>Choose values...</em></p>
     }
-    else if (featureProgressDataModel.AdoOrganization == AdoAnalysisService.TrTaxOrganization && string.IsNullOrWhiteSpace(adoToken))
+    else if (string.IsNullOrWhiteSpace(adoToken))
     {
-        <p><em>ADO tr-tax token is not set on the Home page</em></p>
-    }
-    else if ((featureProgressDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultPatagoniaOrganization ||
-            featureProgressDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultEflexwareOrganization) &&
-            string.IsNullOrWhiteSpace(adoTrTaxDefaultToken))
-    {
-        <p><em>ADO tr-tax-default token is not set on the Home page</em></p>
+        <p><em>ADO token is not set on the Home page</em></p>
     }
     else if (notAuthorized)
     {
@@ -93,7 +78,6 @@
         private Dictionary<string, List<FeatureChildPoint>>? dataPoints;
         private FeatureProgressDataModel featureProgressDataModel = new FeatureProgressDataModel();
         private string? adoToken;
-        private string? adoTrTaxDefaultToken;
         private bool shouldRender = true;
         private bool dataFetched = false;
         private bool notAuthorized = false;
@@ -105,42 +89,23 @@
 
         protected override async Task OnInitializedAsync()
         {
-            var tokenCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoTrTaxTokenLocalStoreId);
+            var tokenCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoTokenLocalStoreId);
             if (tokenCookie.Success && !string.IsNullOrWhiteSpace(tokenCookie.Value))
             {
                 adoToken = SettingsModel.ReverseToken(tokenCookie.Value);
             }
-            var trTaxDefaulTokenCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoTrTaxDefaultTokenLocalStoreId);
-            if (trTaxDefaulTokenCookie.Success && !string.IsNullOrWhiteSpace(trTaxDefaulTokenCookie.Value))
-            {
-                adoTrTaxDefaultToken = SettingsModel.ReverseToken(trTaxDefaulTokenCookie.Value);
-            }
 
-            var adoOrg = await GetAndRemovedGlobalAdoFromProtectedStoreForOneTimeMigration();
-            if (adoOrg.Success && !string.IsNullOrWhiteSpace(adoOrg.Value))
-            {
-                featureProgressDataModel.AdoOrganization = adoOrg.Value;
-            }
-            adoOrg = await ProtectedLocalStore.GetAsync<string>(adoOrgLocalStoreId);
-            if (adoOrg.Success && !string.IsNullOrWhiteSpace(adoOrg.Value))
-            {
-                featureProgressDataModel.AdoOrganization = adoOrg.Value;
-            }
-
-            if (string.IsNullOrWhiteSpace(featureProgressDataModel.AdoOrganization))
-                return;
-
-            var featureIds = await ProtectedLocalStore.GetAsync<string>(featureProgressDataModel.AdoOrganization + featureIdsLocalStoreId);
+            var featureIds = await ProtectedLocalStore.GetAsync<string>(featureIdsLocalStoreId);
             if (featureIds.Success)
             {
                 featureProgressDataModel.FeatureIds = featureIds.Value;
             }
-            var startDate = await ProtectedSessionStore.GetAsync<DateTime>(featureProgressDataModel.AdoOrganization + startDateSessionStoreId);
+            var startDate = await ProtectedSessionStore.GetAsync<DateTime>(startDateSessionStoreId);
             if (startDate.Success)
             {
                 featureProgressDataModel.StartDate = startDate.Value;
             }
-            var frequency = await ProtectedSessionStore.GetAsync<string>(featureProgressDataModel.AdoOrganization + frequencySessionStoreId);
+            var frequency = await ProtectedSessionStore.GetAsync<string>(frequencySessionStoreId);
             if (frequency.Success)
             {
                 featureProgressDataModel.ReportingFrequency = frequency.Value;
@@ -165,7 +130,8 @@
 
         private async Task GatherData()
         {
-            if (string.IsNullOrWhiteSpace(featureProgressDataModel.AdoOrganization) || string.IsNullOrWhiteSpace(featureProgressDataModel.FeatureIds) || featureProgressDataModel.StartDate == null || string.IsNullOrWhiteSpace(featureProgressDataModel.ReportingFrequency))
+            if (string.IsNullOrWhiteSpace(featureProgressDataModel.FeatureIds) || featureProgressDataModel.StartDate == null ||
+            string.IsNullOrWhiteSpace(featureProgressDataModel.ReportingFrequency))
                 return;
 
             children = null;
@@ -176,15 +142,10 @@
 
             dataFetched = true;
 
-            string? useToken = "";
-            if (featureProgressDataModel.AdoOrganization == AdoAnalysisService.TrTaxOrganization)
-                useToken = adoToken;
-            else if (featureProgressDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultPatagoniaOrganization || featureProgressDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultEflexwareOrganization)
-                useToken = adoTrTaxDefaultToken;
-
-            if (!string.IsNullOrWhiteSpace(useToken))
+            if (!string.IsNullOrWhiteSpace(adoToken))
             {
-                children = await GetFeatureProgressData(featureProgressDataModel.FeatureIds, featureProgressDataModel.StartDate.Value, featureProgressDataModel.ReportingFrequency, useToken, featureProgressDataModel.AdoOrganization);
+                children = await GetFeatureProgressData(featureProgressDataModel.FeatureIds,
+                featureProgressDataModel.StartDate.Value, featureProgressDataModel.ReportingFrequency, adoToken);
                 if (children == null)
                     return;
                 if (children.NotAuthorized)
@@ -195,20 +156,21 @@
                     dataPoints = FeatureChildren.CalculateChildrenDataPoints(children);
             }
 
-            await ProtectedLocalStore.SetAsync(adoOrgLocalStoreId, featureProgressDataModel.AdoOrganization);
-            await ProtectedLocalStore.SetAsync(featureProgressDataModel.AdoOrganization + featureIdsLocalStoreId, featureProgressDataModel.FeatureIds);
-            await ProtectedSessionStore.SetAsync(featureProgressDataModel.AdoOrganization + startDateSessionStoreId, featureProgressDataModel.StartDate);
-            await ProtectedSessionStore.SetAsync(featureProgressDataModel.AdoOrganization + frequencySessionStoreId, featureProgressDataModel.ReportingFrequency);
+            await ProtectedLocalStore.SetAsync(featureIdsLocalStoreId, featureProgressDataModel.FeatureIds);
+            await ProtectedSessionStore.SetAsync(startDateSessionStoreId, featureProgressDataModel.StartDate);
+            await ProtectedSessionStore.SetAsync(frequencySessionStoreId, featureProgressDataModel.ReportingFrequency);
         }
 
-        private async Task<FeatureChildrenJsonRecord?> GetFeatureProgressData(string featureIds, DateTime startDate, string reportingFrequency, string token, string org)
+        private async Task<FeatureChildrenJsonRecord?> GetFeatureProgressData(string featureIds, DateTime startDate, string
+        reportingFrequency, string token)
         {
-            var cacheKey = string.Format("{0}\n{1}\n{2}\n{3}\n{4}\n{5}\n", "fp", featureIds, startDate, reportingFrequency, org, string.Empty);
+            var cacheKey = string.Format("{0}\n{1}\n{2}\n{3}\n{4}\n", "fp", featureIds, startDate, reportingFrequency,
+            string.Empty);
 
             FeatureChildrenJsonRecord? childrenCache;
             var cached = InMemoryCache.TryGetValue(cacheKey, out childrenCache);
             if (!cached || childrenCache == null)
-                childrenCache = await AdoService.GetFeatureProgressData(featureIds, startDate, reportingFrequency, token, org);
+                childrenCache = await AdoService.GetFeatureProgressData(featureIds, startDate, reportingFrequency, token);
 
             if (!cached && childrenCache != null && !childrenCache.NotAuthorized)
             {
@@ -218,17 +180,6 @@
             }
 
             return childrenCache;
-        }
-
-        private async Task<ProtectedBrowserStorageResult<string>> GetAndRemovedGlobalAdoFromProtectedStoreForOneTimeMigration()
-        {
-            var orgCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoOrganizationStoreId);
-            if (orgCookie.Success && !string.IsNullOrWhiteSpace(orgCookie.Value))
-            {
-                await ProtectedLocalStore.DeleteAsync(SettingsModel.adoOrganizationStoreId);
-            }
-
-            return orgCookie;
         }
     }
 </body>

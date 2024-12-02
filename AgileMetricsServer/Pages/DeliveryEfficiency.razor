@@ -22,15 +22,6 @@
         <ValidationSummary />
         <p>
             <label>
-                ADO Organization/Project:
-                <InputSelect @bind-Value="deliveryEfficiencyDataModel.AdoOrganization">
-                    <option value="">Select...</option>
-                    <option value="@AdoAnalysisService.TrTaxOrganization"> @AdoAnalysisService.TrTaxOrganization </option>
-                    <option value="@AdoAnalysisService.TrTaxDefaultPatagoniaOrganization"> @AdoAnalysisService.TrTaxDefaultPatagoniaOrganization </option>
-                    <option value="@AdoAnalysisService.TrTaxDefaultEflexwareOrganization"> @AdoAnalysisService.TrTaxDefaultEflexwareOrganization </option>
-                </InputSelect>
-            </label>
-            <label>
                 ADO Team:
                 <InputText id="adoteam" @bind-Value="deliveryEfficiencyDataModel.AdoTeam" />
             </label>
@@ -78,15 +69,9 @@
     {
         <p><em>Choose values...</em></p>
     }
-    else if (deliveryEfficiencyDataModel.AdoOrganization == AdoAnalysisService.TrTaxOrganization && string.IsNullOrWhiteSpace(adoToken))
+    else if (string.IsNullOrWhiteSpace(adoToken))
     {
-        <p><em>ADO tr-tax token is not set on the Home page</em></p>
-    }
-    else if ((deliveryEfficiencyDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultPatagoniaOrganization ||
-            deliveryEfficiencyDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultEflexwareOrganization) &&
-            string.IsNullOrWhiteSpace(adoTrTaxDefaultToken))
-    {
-        <p><em>ADO tr-tax-default token is not set on the Home page</em></p>
+        <p><em>ADO token is not set on the Home page</em></p>
     }
     else if (notAuthorized)
     {
@@ -98,7 +83,8 @@
     }
     else
     {
-        <DeliveryEfficiencyChart Id="deliveryEfficiency" PercentileSeries="@percentileSeries" Title="Cycle Time Trend" QueryDetails="@deliveryEfficiencyDataModel">
+        <DeliveryEfficiencyChart Id="deliveryEfficiency" PercentileSeries="@percentileSeries" Title="Cycle Time Trend"
+            QueryDetails="@deliveryEfficiencyDataModel">
         </DeliveryEfficiencyChart>
     }
 
@@ -110,7 +96,6 @@
         private bool notAuthorized = false;
         private ScatterPlotSeriesJsonRecord? scatterPlotSeries;
         private string? adoToken;
-        private string? adoTrTaxDefaultToken;
         private Dictionary<DateTime, Percentiles>? percentileSeries;
         private const string adoOrgLocalStoreId = "de-adoorg";
         private const string adoTeamLocalStoreId = "de-adoteam";
@@ -123,62 +108,43 @@
 
         protected override async Task OnInitializedAsync()
         {
-            var tokenCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoTrTaxTokenLocalStoreId);
+            var tokenCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoTokenLocalStoreId);
             if (tokenCookie.Success && !string.IsNullOrWhiteSpace(tokenCookie.Value))
             {
                 adoToken = SettingsModel.ReverseToken(tokenCookie.Value);
             }
-            var trTaxDefaulTokenCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoTrTaxDefaultTokenLocalStoreId);
-            if (trTaxDefaulTokenCookie.Success && !string.IsNullOrWhiteSpace(trTaxDefaulTokenCookie.Value))
-            {
-                adoTrTaxDefaultToken = SettingsModel.ReverseToken(trTaxDefaulTokenCookie.Value);
-            }
 
-            var adoOrg = await GetAndRemovedGlobalAdoFromProtectedStoreForOneTimeMigration();
-            if (adoOrg.Success && !string.IsNullOrWhiteSpace(adoOrg.Value))
-            {
-                deliveryEfficiencyDataModel.AdoOrganization = adoOrg.Value;
-            }
-            adoOrg = await ProtectedLocalStore.GetAsync<string>(adoOrgLocalStoreId);
-            if (adoOrg.Success && !string.IsNullOrWhiteSpace(adoOrg.Value))
-            {
-                deliveryEfficiencyDataModel.AdoOrganization = adoOrg.Value;
-            }
-
-            if (string.IsNullOrWhiteSpace(deliveryEfficiencyDataModel.AdoOrganization))
-                return;
-
-            var adoTeam = await ProtectedLocalStore.GetAsync<string>(deliveryEfficiencyDataModel.AdoOrganization + adoTeamLocalStoreId);
+            var adoTeam = await ProtectedLocalStore.GetAsync<string>(adoTeamLocalStoreId);
             if (adoTeam.Success)
             {
                 deliveryEfficiencyDataModel.AdoTeam = adoTeam.Value;
             }
-            var workItemType = await ProtectedLocalStore.GetAsync<string>(deliveryEfficiencyDataModel.AdoOrganization + workItemTypeLocalStoreId);
+            var workItemType = await ProtectedLocalStore.GetAsync<string>(workItemTypeLocalStoreId);
             if (workItemType.Success)
             {
                 deliveryEfficiencyDataModel.WorkItemType = workItemType.Value;
             }
-            var tags = await ProtectedLocalStore.GetAsync<string>(deliveryEfficiencyDataModel.AdoOrganization + tagsLocalStoreId);
+            var tags = await ProtectedLocalStore.GetAsync<string>(tagsLocalStoreId);
             if (tags.Success)
             {
                 deliveryEfficiencyDataModel.Tags = tags.Value;
             }
-            var evalPeriodStart = await ProtectedSessionStore.GetAsync<DateTime>(deliveryEfficiencyDataModel.AdoOrganization + evalStartDateSessionStoreId);
+            var evalPeriodStart = await ProtectedSessionStore.GetAsync<DateTime>(evalStartDateSessionStoreId);
             if (evalPeriodStart.Success)
             {
                 deliveryEfficiencyDataModel.EvaluationPeriodStart = evalPeriodStart.Value;
             }
-            var evalPeriodEnd = await ProtectedSessionStore.GetAsync<DateTime>(deliveryEfficiencyDataModel.AdoOrganization + evalEndDateSessionStoreId);
+            var evalPeriodEnd = await ProtectedSessionStore.GetAsync<DateTime>(evalEndDateSessionStoreId);
             if (evalPeriodEnd.Success)
             {
                 deliveryEfficiencyDataModel.EvaluationPeriodEnd = evalPeriodEnd.Value;
             }
-            var cycleTimeSpan = await ProtectedSessionStore.GetAsync<int>(deliveryEfficiencyDataModel.AdoOrganization + cycleTimeSpanSessionStoreId);
+            var cycleTimeSpan = await ProtectedSessionStore.GetAsync<int>(cycleTimeSpanSessionStoreId);
             if (cycleTimeSpan.Success)
             {
                 deliveryEfficiencyDataModel.CycleTimeSpan = cycleTimeSpan.Value;
             }
-            var evalFrequency = await ProtectedSessionStore.GetAsync<string>(deliveryEfficiencyDataModel.AdoOrganization + frequencySessionStoreId);
+            var evalFrequency = await ProtectedSessionStore.GetAsync<string>(frequencySessionStoreId);
             if (evalFrequency.Success)
             {
                 deliveryEfficiencyDataModel.EvaluationPeriodFrequency = evalFrequency.Value;
@@ -202,10 +168,11 @@
 
         private async Task GatherData()
         {
-            if (string.IsNullOrWhiteSpace(deliveryEfficiencyDataModel.AdoOrganization) ||
-                deliveryEfficiencyDataModel.AdoTeam == null || string.IsNullOrWhiteSpace(deliveryEfficiencyDataModel.WorkItemType) ||
-                deliveryEfficiencyDataModel.CycleTimeSpan == null || deliveryEfficiencyDataModel.EvaluationPeriodStart == null ||
-                deliveryEfficiencyDataModel.EvaluationPeriodEnd == null || string.IsNullOrWhiteSpace(deliveryEfficiencyDataModel.EvaluationPeriodFrequency))
+            if (deliveryEfficiencyDataModel.AdoTeam == null ||
+            string.IsNullOrWhiteSpace(deliveryEfficiencyDataModel.WorkItemType) ||
+            deliveryEfficiencyDataModel.CycleTimeSpan == null || deliveryEfficiencyDataModel.EvaluationPeriodStart == null ||
+            deliveryEfficiencyDataModel.EvaluationPeriodEnd == null ||
+            string.IsNullOrWhiteSpace(deliveryEfficiencyDataModel.EvaluationPeriodFrequency))
             {
                 return;
             }
@@ -217,15 +184,12 @@
 
             dataFetched = true;
 
-            string? useToken = "";
-            if (deliveryEfficiencyDataModel.AdoOrganization == AdoAnalysisService.TrTaxOrganization)
-                useToken = adoToken;
-            else if (deliveryEfficiencyDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultPatagoniaOrganization || deliveryEfficiencyDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultEflexwareOrganization)
-                useToken = adoTrTaxDefaultToken;
-
-            if (!string.IsNullOrWhiteSpace(useToken))
+            if (!string.IsNullOrWhiteSpace(adoToken))
             {
-                scatterPlotSeries = await GetCycleTimeSeriesScatterPlotData(deliveryEfficiencyDataModel.WorkItemType, deliveryEfficiencyDataModel.CycleTimeSpan.Value, deliveryEfficiencyDataModel.EvaluationPeriodStart.Value, deliveryEfficiencyDataModel.EvaluationPeriodEnd.Value, deliveryEfficiencyDataModel.EvaluationPeriodFrequency, deliveryEfficiencyDataModel.Tags ?? string.Empty, deliveryEfficiencyDataModel.AdoTeam, useToken, deliveryEfficiencyDataModel.AdoOrganization);
+                scatterPlotSeries = await GetCycleTimeSeriesScatterPlotData(deliveryEfficiencyDataModel.WorkItemType,
+                deliveryEfficiencyDataModel.CycleTimeSpan.Value, deliveryEfficiencyDataModel.EvaluationPeriodStart.Value,
+                deliveryEfficiencyDataModel.EvaluationPeriodEnd.Value, deliveryEfficiencyDataModel.EvaluationPeriodFrequency,
+                deliveryEfficiencyDataModel.Tags ?? string.Empty, deliveryEfficiencyDataModel.AdoTeam, adoToken);
                 if (scatterPlotSeries == null)
                     return;
                 if (!scatterPlotSeries.NotAuthorized)
@@ -236,24 +200,29 @@
                     notAuthorized = true;
             }
 
-            await ProtectedLocalStore.SetAsync(adoOrgLocalStoreId, deliveryEfficiencyDataModel.AdoOrganization);
-            await ProtectedLocalStore.SetAsync(deliveryEfficiencyDataModel.AdoOrganization + adoTeamLocalStoreId, deliveryEfficiencyDataModel.AdoTeam);
-            await ProtectedLocalStore.SetAsync(deliveryEfficiencyDataModel.AdoOrganization + workItemTypeLocalStoreId, deliveryEfficiencyDataModel.WorkItemType);
-            await ProtectedLocalStore.SetAsync(deliveryEfficiencyDataModel.AdoOrganization + tagsLocalStoreId, deliveryEfficiencyDataModel.Tags ?? string.Empty);
-            await ProtectedSessionStore.SetAsync(deliveryEfficiencyDataModel.AdoOrganization + evalStartDateSessionStoreId, deliveryEfficiencyDataModel.EvaluationPeriodStart);
-            await ProtectedSessionStore.SetAsync(deliveryEfficiencyDataModel.AdoOrganization + evalEndDateSessionStoreId, deliveryEfficiencyDataModel.EvaluationPeriodEnd);
-            await ProtectedSessionStore.SetAsync(deliveryEfficiencyDataModel.AdoOrganization + cycleTimeSpanSessionStoreId, deliveryEfficiencyDataModel.CycleTimeSpan);
-            await ProtectedSessionStore.SetAsync(deliveryEfficiencyDataModel.AdoOrganization + frequencySessionStoreId, deliveryEfficiencyDataModel.EvaluationPeriodFrequency);
+            await ProtectedLocalStore.SetAsync(adoTeamLocalStoreId, deliveryEfficiencyDataModel.AdoTeam);
+            await ProtectedLocalStore.SetAsync(workItemTypeLocalStoreId, deliveryEfficiencyDataModel.WorkItemType);
+            await ProtectedLocalStore.SetAsync(tagsLocalStoreId, deliveryEfficiencyDataModel.Tags ?? string.Empty);
+            await ProtectedSessionStore.SetAsync(evalStartDateSessionStoreId,
+            deliveryEfficiencyDataModel.EvaluationPeriodStart);
+            await ProtectedSessionStore.SetAsync(evalEndDateSessionStoreId, deliveryEfficiencyDataModel.EvaluationPeriodEnd);
+            await ProtectedSessionStore.SetAsync(cycleTimeSpanSessionStoreId, deliveryEfficiencyDataModel.CycleTimeSpan);
+            await ProtectedSessionStore.SetAsync(frequencySessionStoreId,
+            deliveryEfficiencyDataModel.EvaluationPeriodFrequency);
         }
 
-        private async Task<ScatterPlotSeriesJsonRecord?> GetCycleTimeSeriesScatterPlotData(string workItemType, int cycleTimeSpan, DateTime evaluationPeriodStart, DateTime evaluationPeriodEnd, string evaluationPeriodFrequency, string tags, string adoTeam, string token, string org)
+        private async Task<ScatterPlotSeriesJsonRecord?> GetCycleTimeSeriesScatterPlotData(string workItemType, int
+        cycleTimeSpan, DateTime evaluationPeriodStart, DateTime evaluationPeriodEnd, string evaluationPeriodFrequency,
+        string tags, string adoTeam, string token)
         {
-            string cacheKey = string.Format("{0}\n{1}\n{2}\n{3}\n{4}\n{5}\n{6}\n{7}\n{8}\n", "de", workItemType, cycleTimeSpan, evaluationPeriodStart, evaluationPeriodEnd, evaluationPeriodFrequency, adoTeam, org, tags);
+            string cacheKey = string.Format("{0}\n{1}\n{2}\n{3}\n{4}\n{5}\n{6}\n{7}\n", "de", workItemType, cycleTimeSpan,
+            evaluationPeriodStart, evaluationPeriodEnd, evaluationPeriodFrequency, adoTeam, tags);
 
             ScatterPlotSeriesJsonRecord? seriesCache;
             var cached = InMemoryCache.TryGetValue(cacheKey, out seriesCache);
             if (!cached || seriesCache == null)
-                seriesCache = await AdoService.GetCycleTimeSeriesScatterPlotData(workItemType, cycleTimeSpan, evaluationPeriodStart, evaluationPeriodEnd, evaluationPeriodFrequency, tags, adoTeam, token, org);
+                seriesCache = await AdoService.GetCycleTimeSeriesScatterPlotData(workItemType, cycleTimeSpan, evaluationPeriodStart,
+                evaluationPeriodEnd, evaluationPeriodFrequency, tags, adoTeam, token);
 
             if (!cached && seriesCache != null && !seriesCache.NotAuthorized)
             {
@@ -263,17 +232,6 @@
             }
 
             return seriesCache;
-        }
-
-        private async Task<ProtectedBrowserStorageResult<string>> GetAndRemovedGlobalAdoFromProtectedStoreForOneTimeMigration()
-        {
-            var orgCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoOrganizationStoreId);
-            if (orgCookie.Success && !string.IsNullOrWhiteSpace(orgCookie.Value))
-            {
-                await ProtectedLocalStore.DeleteAsync(SettingsModel.adoOrganizationStoreId);
-            }
-
-            return orgCookie;
         }
     }
 </body>

@@ -5,9 +5,6 @@ namespace AgileMetricsServer.Models
 {
     public class EpicProgressDataModel
     {
-        [Required(ErrorMessage = "Ado Organization field is required")]
-        public string? AdoOrganization { get; set; }
-
         [Range(1, Int32.MaxValue)]
         [Required(ErrorMessage = "Epic ID field is required. ")]
         public int? EpicId { get; set; }

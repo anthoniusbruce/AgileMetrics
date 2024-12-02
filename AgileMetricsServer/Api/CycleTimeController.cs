@@ -35,7 +35,7 @@ namespace AgileMetricsServer.Api
                     json = null;
                 }
 
-                if (json == null || string.IsNullOrWhiteSpace(json.org) || string.IsNullOrWhiteSpace(json.token) || string.IsNullOrWhiteSpace(json.workItemType) ||
+                if (json == null || string.IsNullOrWhiteSpace(json.token) || string.IsNullOrWhiteSpace(json.workItemType) ||
                     json.startingDate == null || json.endingDate == null || string.IsNullOrWhiteSpace(json.team))
                 {
                     return BadRequest();
@@ -49,7 +49,7 @@ namespace AgileMetricsServer.Api
                 ScatterPlotJsonRecord? scatterPlots;
                 try
                 {
-                    scatterPlots = await AdoService.GetCycleTimeScatterPlotData(workItemType, json.startingDate.Value, json.endingDate.Value, json.tags ?? string.Empty, json.team, json.token, json.org);
+                    scatterPlots = await AdoService.GetCycleTimeScatterPlotData(workItemType, json.startingDate.Value, json.endingDate.Value, json.tags ?? string.Empty, json.team, json.token);
                 }
                 catch (HttpRequestException e)
                 {

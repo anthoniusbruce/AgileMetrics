@@ -3,11 +3,8 @@ namespace AgileMetricsServer.Models
 {
     public class SettingsModel
     {
-        public const string adoTrTaxTokenLocalStoreId = "client-guid";
-        public const string adoTrTaxDefaultTokenLocalStoreId = "user-guid";
-        public const string adoOrganizationStoreId = "client-id";
-        public string? AdoTrTaxToken { get; set; }
-        public string? AdoTrTaxDefaultToken { get; set; }
+        public const string adoTokenLocalStoreId = "client-guid";
+        public string? AdoToken { get; set; }
 
         static public string ReverseToken(string token)
         {

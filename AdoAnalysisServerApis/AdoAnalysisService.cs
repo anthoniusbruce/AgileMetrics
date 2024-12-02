@@ -21,9 +21,7 @@ namespace AdoAnalysisServerApis
         private const string FrequencyDayString = "Each day";
         private const string FrequencyWeekString = "Once a week";
         private const string FrequencyMonthString = "Once a month";
-        private const string trTaxOrganization = "tr-tax";
-        private const string trTaxDefaultPatagoniaOrganization = "tr-tax-default-Patagonia";
-        private const string trTaxDefaultEflexwareOrganization = "tr-tax-default-eFlexware";
+        private const string organization = "<replace with organization>";
         private const string OneMonthString = "1 month";
         private const string TwoMonthsString = "2 months";
         private const string ThreeMonthsString = "3 months";
@@ -36,9 +34,7 @@ namespace AdoAnalysisServerApis
         public static string FrequencyDay { get { return FrequencyDayString; } }
         public static string FrequencyWeek { get { return FrequencyWeekString; } }
         public static string FrequencyMonth { get { return FrequencyMonthString; } }
-        public static string TrTaxOrganization { get { return trTaxOrganization; } }
-        public static string TrTaxDefaultPatagoniaOrganization { get { return trTaxDefaultPatagoniaOrganization; } }
-        public static string TrTaxDefaultEflexwareOrganization { get { return trTaxDefaultEflexwareOrganization; } }
+        public static string Organization { get { return organization; } }
         public static string OneMonth { get { return OneMonthString; } }
         public static string TwoMonths { get { return TwoMonthsString; } }
         public static string ThreeMonths { get { return ThreeMonthsString; } }
@@ -48,7 +44,7 @@ namespace AdoAnalysisServerApis
             httpClientFactory = factory;
         }
 
-        private HttpClient CreateClient(string token, string organization)
+        private HttpClient CreateClient(string token)
         {
             var client = httpClientFactory.CreateClient(organization);
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic",
@@ -56,21 +52,21 @@ namespace AdoAnalysisServerApis
             return client;
         }
 
-        public async Task<HttpResponseMessage> GetMetadata(string token, string organization)
+        public async Task<HttpResponseMessage> GetMetadata(string token)
         {
-            HttpClient client = CreateClient(token, organization);
+            HttpClient client = CreateClient(token);
 
             var result = await client.GetAsync(Metadata);
 
             return result;
         }
 
-        public async Task<CumulativeFlowJsonRecord?> GetCumulativeFlowData(string organization, string token, string team, string timeSpan)
+        public async Task<CumulativeFlowJsonRecord?> GetCumulativeFlowData(string token, string team, string timeSpan)
         {
             var teamQuery = FormatOdata(FormatUserEnteredData(team));
             var startDate = BuildTimeSpanStartDate(timeSpan);
 
-            HttpClient client = CreateClient(token, organization);
+            HttpClient client = CreateClient(token);
 
             CumulativeFlowJsonRecord? result;
             string query = string.Format(CumulativeFlowParameters, teamQuery, startDate);
@@ -97,11 +93,11 @@ namespace AdoAnalysisServerApis
             return result;
         }
 
-        public async Task<ColumnJsonRecord?> GetColumnData(string organization, string token, string team)
+        public async Task<ColumnJsonRecord?> GetColumnData(string token, string team)
         {
             var teamQuery = FormatOdata(FormatUserEnteredData(team));
 
-            HttpClient client = CreateClient(token, organization);
+            HttpClient client = CreateClient(token);
 
             ColumnJsonRecord? result;
             string query = string.Format(ColumnParameters, teamQuery);
@@ -128,11 +124,11 @@ namespace AdoAnalysisServerApis
             return result;
         }
 
-        public async Task<EpicFeatureIdsJsonRecord?> GetEpicFeatureIdsData(int epicId, string token, string organization)
+        public async Task<EpicFeatureIdsJsonRecord?> GetEpicFeatureIdsData(int epicId, string token)
         {
             var epicQuery = string.Format(epicFeatureIdsParameters, epicId);
 
-            HttpClient client = CreateClient(token, organization);
+            HttpClient client = CreateClient(token);
 
             EpicFeatureIdsJsonRecord? result;
             try
@@ -159,15 +155,15 @@ namespace AdoAnalysisServerApis
             return result;
         }
 
-        public async Task<FeatureChildrenJsonRecord?> GetFeatureProgressData(string featureIds, DateTime startDate, string reportingFrequency, string token, string organization)
+        public async Task<FeatureChildrenJsonRecord?> GetFeatureProgressData(string featureIds, DateTime startDate, string reportingFrequency, string token)
         {
             var queryDates = BuildDatesQuerySubstring(startDate, reportingFrequency);
             var featureIdsQuery = BuildFeatureIdsSubstring(featureIds);
 
             if (string.IsNullOrWhiteSpace(queryDates))
-                return new FeatureChildrenJsonRecord { Value = new List<FeatureChildrenJsonRec>()};
+                return new FeatureChildrenJsonRecord { Value = new List<FeatureChildrenJsonRec>() };
 
-            HttpClient client = CreateClient(token, organization);
+            HttpClient client = CreateClient(token);
 
             FeatureChildrenJsonRecord? result;
             string query = string.Format(FeatureProgressParameters, queryDates, featureIdsQuery);
@@ -194,7 +190,7 @@ namespace AdoAnalysisServerApis
             return result;
         }
 
-        public async Task<ScatterPlotJsonRecord?> GetCycleTimeScatterPlotData(string workItemType, DateTime startDate, DateTime endDate, string tags, string adoTeam, string token, string organization)
+        public async Task<ScatterPlotJsonRecord?> GetCycleTimeScatterPlotData(string workItemType, DateTime startDate, DateTime endDate, string tags, string adoTeam, string token)
         {
             var tuple = FormatFromToDate(startDate, endDate);
             var fromDate = tuple.Item1;
@@ -202,7 +198,7 @@ namespace AdoAnalysisServerApis
             var team = FormatOdata(FormatUserEnteredData(adoTeam));
             var type = FormatOdata(workItemType);
             var tagsQuery = BuildTagsSubstring(tags);
-            HttpClient client = CreateClient(token, organization);
+            HttpClient client = CreateClient(token);
 
 
             ScatterPlotJsonRecord? result;
@@ -230,12 +226,12 @@ namespace AdoAnalysisServerApis
             return result;
         }
 
-        public async Task<AgingWipJsonRecord?> GetAgingWorkInProgressData(string workItemType, string tags, string adoTeam, string token, string organization)
+        public async Task<AgingWipJsonRecord?> GetAgingWorkInProgressData(string workItemType, string tags, string adoTeam, string token)
         {
             var type = FormatOdata(workItemType);
             var tagsQuery = BuildTagsSubstring(tags);
             var team = FormatOdata(adoTeam);
-            HttpClient client = CreateClient(token, organization);
+            HttpClient client = CreateClient(token);
 
             AgingWipJsonRecord? result;
             string query = string.Format(AgingWorkInProgressParameters, type, team, tagsQuery);
@@ -262,7 +258,7 @@ namespace AdoAnalysisServerApis
             return result;
         }
 
-        public async Task<ScatterPlotSeriesJsonRecord?> GetCycleTimeSeriesScatterPlotData(string workItemType, int cycleTimeSpan, DateTime evaluationPeriodStart, DateTime evaluationPeriodEnd, string evaluationPeriodFrequency, string tags, string adoTeam, string token, string organization)
+        public async Task<ScatterPlotSeriesJsonRecord?> GetCycleTimeSeriesScatterPlotData(string workItemType, int cycleTimeSpan, DateTime evaluationPeriodStart, DateTime evaluationPeriodEnd, string evaluationPeriodFrequency, string tags, string adoTeam, string token)
         {
             ScatterPlotSeriesJsonRecord result;
 
@@ -272,7 +268,7 @@ namespace AdoAnalysisServerApis
 
             for (DateTime date = evaluationPeriodEnd; date >= evaluationPeriodStart; date = GetNextEarlierDate(date, evaluationPeriodFrequency))
             {
-                var intermediateResult = await GetCycleTimeScatterPlotData(workItemType, date.AddDays(-cycleTimeSpan), date, tags, adoTeam, token, organization);
+                var intermediateResult = await GetCycleTimeScatterPlotData(workItemType, date.AddDays(-cycleTimeSpan), date, tags, adoTeam, token);
 
                 if (intermediateResult == null)
                     return null;
@@ -287,14 +283,14 @@ namespace AdoAnalysisServerApis
             return result;
         }
 
-        public async Task<ThroughputJsonRecord?> GetThroughputData(string workItemType, DateTime startDate, DateTime endDate, string adoTeam, string token, string organization)
+        public async Task<ThroughputJsonRecord?> GetThroughputData(string workItemType, DateTime startDate, DateTime endDate, string adoTeam, string token)
         {
             var tuple = FormatFromToDate(startDate, endDate);
             var fromDate = tuple.Item1;
             var toDate = tuple.Item2;
             var team = FormatOdata(FormatUserEnteredData(adoTeam));
             var type = FormatOdata(workItemType);
-            var client = CreateClient(token, organization);
+            var client = CreateClient(token);
 
             ThroughputJsonRecord? result;
             string query = string.Format(UserStoryThroughputParameters, type, fromDate, toDate, team);
@@ -339,7 +335,7 @@ namespace AdoAnalysisServerApis
             return odata;
         }
 
-        private static Tuple<int,int> FormatFromToDate(DateTime d1, DateTime d2)
+        private static Tuple<int, int> FormatFromToDate(DateTime d1, DateTime d2)
         {
             DateTime from;
             DateTime to;

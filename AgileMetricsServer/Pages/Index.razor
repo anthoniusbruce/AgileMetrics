@@ -15,83 +15,57 @@
 A consistent process leads to predictability
 <br />
 <br />
+
 <body>
     <EditForm Model="@settingsModel" OnValidSubmit="@HandleValidSubmit">
         <DataAnnotationsValidator />
         <ValidationSummary />
 
         <p>
-            <h3>Token settings</h3>
-            <label>
-                ADO Token for tr-tax Org:
-                <InputText id="trtaxtoken" @bind-Value="settingsModel.AdoTrTaxToken" />
-            </label>
-            <br />
-            <label>
-                ADO Token for tr-tax-default Org:
-                <InputText id="trtaxdefaulttoken" @bind-Value="settingsModel.AdoTrTaxDefaultToken" />
-            </label>
-            <br />
-            <button type="submit">Submit</button>
+        <h3>Token settings</h3>
+        <label>
+            ADO Token for Org:
+            <InputText id="token" @bind-Value="settingsModel.AdoToken" />
+        </label>
+        <br />
+        <button type="submit">Submit</button>
         </p>
     </EditForm>
 
-    @if (notAuthorizedTrTax)
+    @if (notAuthorized)
     {
-        <p><em>tr-tax not authorized. Token is not valid. Maybe it is expired.</em></p>
-    }
-
-    @if (notAuthorizedTrTaxDefault)
-    {
-        <p><em>tr-tax-default not authorized. Token is not valid. Maybe it is expired.</em></p>
+        <p><em>Organization not authorized. Token is not valid. Maybe it is expired.</em></p>
     }
 
     @code {
         private SettingsModel settingsModel = new SettingsModel();
-        private bool notAuthorizedTrTax = false;
-        private bool notAuthorizedTrTaxDefault = false;
+        private bool notAuthorized = false;
 
         protected override async Task OnInitializedAsync()
         {
-            var token = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoTrTaxTokenLocalStoreId);
+            var token = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoTokenLocalStoreId);
             if (token.Success && !string.IsNullOrWhiteSpace(token.Value))
             {
-                settingsModel.AdoTrTaxToken = SettingsModel.ReverseToken(token.Value);
-            }
-            var trTaxDefaultToken = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoTrTaxDefaultTokenLocalStoreId);
-            if (trTaxDefaultToken.Success && !string.IsNullOrWhiteSpace(trTaxDefaultToken.Value))
-            {
-                settingsModel.AdoTrTaxDefaultToken = SettingsModel.ReverseToken(trTaxDefaultToken.Value);
+                settingsModel.AdoToken = SettingsModel.ReverseToken(token.Value);
             }
         }
 
         private async Task HandleValidSubmit()
         {
-            notAuthorizedTrTax = false;
-            if (!string.IsNullOrWhiteSpace(settingsModel.AdoTrTaxToken))
+            notAuthorized = false;
+            if (!string.IsNullOrWhiteSpace(settingsModel.AdoToken))
             {
-                var result = await AdoService.GetMetadata(settingsModel.AdoTrTaxToken, AdoAnalysisService.TrTaxOrganization);
+                var result = await AdoService.GetMetadata(settingsModel.AdoToken);
                 if (result.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                 {
-                    notAuthorizedTrTax = true;
-                    return;
-                }
-            }
-            notAuthorizedTrTaxDefault = false;
-            if (!string.IsNullOrWhiteSpace(settingsModel.AdoTrTaxDefaultToken))
-            {
-                var result = await AdoService.GetMetadata(settingsModel.AdoTrTaxDefaultToken, AdoAnalysisService.TrTaxDefaultPatagoniaOrganization);
-                if (result.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-                {
-                    notAuthorizedTrTaxDefault = true;
+                    notAuthorized = true;
                     return;
                 }
             }
 
-            if (settingsModel.AdoTrTaxToken != null)
-                await ProtectedLocalStore.SetAsync(SettingsModel.adoTrTaxTokenLocalStoreId, SettingsModel.ReverseToken(settingsModel.AdoTrTaxToken));
-            if (settingsModel.AdoTrTaxDefaultToken != null)
-                await ProtectedLocalStore.SetAsync(SettingsModel.adoTrTaxDefaultTokenLocalStoreId, SettingsModel.ReverseToken(settingsModel.AdoTrTaxDefaultToken));
+            if (settingsModel.AdoToken != null)
+                await ProtectedLocalStore.SetAsync(SettingsModel.adoTokenLocalStoreId,
+                SettingsModel.ReverseToken(settingsModel.AdoToken));
         }
     }
 </body>

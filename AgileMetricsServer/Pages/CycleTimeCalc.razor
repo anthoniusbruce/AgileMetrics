@@ -23,15 +23,6 @@
 
         <p>
             <label>
-                ADO Organization/Project:
-                <InputSelect @bind-Value="cycleTimeDataModel.AdoOrganization">
-                    <option value="">Select...</option>
-                    <option value="@AdoAnalysisService.TrTaxOrganization"> @AdoAnalysisService.TrTaxOrganization </option>
-                    <option value="@AdoAnalysisService.TrTaxDefaultPatagoniaOrganization"> @AdoAnalysisService.TrTaxDefaultPatagoniaOrganization </option>
-                    <option value="@AdoAnalysisService.TrTaxDefaultEflexwareOrganization"> @AdoAnalysisService.TrTaxDefaultEflexwareOrganization </option>
-                </InputSelect>
-            </label>
-            <label>
                 ADO Team:
                 <InputText id="adoteam" @bind-Value="cycleTimeDataModel.AdoTeam" />
             </label>
@@ -66,15 +57,9 @@
     {
         <p><em>Choose values...</em></p>
     }
-    else if (cycleTimeDataModel.AdoOrganization == AdoAnalysisService.TrTaxOrganization && string.IsNullOrWhiteSpace(adoToken))
+    else if (string.IsNullOrWhiteSpace(adoToken))
     {
-        <p><em>ADO tr-tax token is not set on the Home page</em></p>
-    }
-    else if ((cycleTimeDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultPatagoniaOrganization ||
-            cycleTimeDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultEflexwareOrganization) &&
-            string.IsNullOrWhiteSpace(adoTrTaxDefaultToken))
-    {
-        <p><em>ADO tr-tax-default token is not set on the Home page</em></p>
+        <p><em>ADO token is not set on the Home page</em></p>
     }
     else if (notAuthorized)
     {
@@ -90,7 +75,8 @@
     }
     else
     {
-        <CycleTimeChart Id="Cycle time" Data="@points" Percentiles="@percentiles" Title="Cycle Time (Days)" QueryDetails="@cycleTimeDataModel">
+        <CycleTimeChart Id="Cycle time" Data="@points" Percentiles="@percentiles" Title="Cycle Time (Days)"
+            QueryDetails="@cycleTimeDataModel">
         </CycleTimeChart>
     }
 
@@ -100,7 +86,6 @@
         private Percentiles? percentiles;
         private CycleTimeDataModel cycleTimeDataModel = new CycleTimeDataModel();
         private string? adoToken;
-        private string? adoTrTaxDefaultToken;
         private bool shouldRender = true;
         private bool dataFetched = false;
         private bool notAuthorized = false;
@@ -114,52 +99,33 @@
 
         protected override async Task OnInitializedAsync()
         {
-            var tokenCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoTrTaxTokenLocalStoreId);
+            var tokenCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoTokenLocalStoreId);
             if (tokenCookie.Success && !string.IsNullOrWhiteSpace(tokenCookie.Value))
             {
                 adoToken = SettingsModel.ReverseToken(tokenCookie.Value);
             }
-            var trTaxDefaulTokenCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoTrTaxDefaultTokenLocalStoreId);
-            if (trTaxDefaulTokenCookie.Success && !string.IsNullOrWhiteSpace(trTaxDefaulTokenCookie.Value))
-            {
-                adoTrTaxDefaultToken = SettingsModel.ReverseToken(trTaxDefaulTokenCookie.Value);
-            }
 
-            var adoOrg = await GetAndRemovedGlobalAdoFromProtectedStoreForOneTimeMigration();
-            if (adoOrg.Success && !string.IsNullOrWhiteSpace(adoOrg.Value))
-            {
-                cycleTimeDataModel.AdoOrganization = adoOrg.Value;
-            }
-            adoOrg = await ProtectedLocalStore.GetAsync<string>(adoOrgLocalStoreId);
-            if (adoOrg.Success && !string.IsNullOrWhiteSpace(adoOrg.Value))
-            {
-                cycleTimeDataModel.AdoOrganization = adoOrg.Value;
-            }
-
-            if (string.IsNullOrWhiteSpace(cycleTimeDataModel.AdoOrganization))
-                return;
-
-            var adoTeam = await ProtectedLocalStore.GetAsync<string>(cycleTimeDataModel.AdoOrganization + adoTeamLocalStoreId);
+            var adoTeam = await ProtectedLocalStore.GetAsync<string>(adoTeamLocalStoreId);
             if (adoTeam.Success)
             {
                 cycleTimeDataModel.AdoTeam = adoTeam.Value;
             }
-            var workItemType = await ProtectedLocalStore.GetAsync<string>(cycleTimeDataModel.AdoOrganization + workItemTypeLocalStoreId);
+            var workItemType = await ProtectedLocalStore.GetAsync<string>(workItemTypeLocalStoreId);
             if (workItemType.Success)
             {
                 cycleTimeDataModel.WorkItemType = workItemType.Value;
             }
-            var tags = await ProtectedLocalStore.GetAsync<string>(cycleTimeDataModel.AdoOrganization + tagsLocalStoreId);
+            var tags = await ProtectedLocalStore.GetAsync<string>(tagsLocalStoreId);
             if (tags.Success)
             {
                 cycleTimeDataModel.Tags = tags.Value;
             }
-            var startingDate = await ProtectedSessionStore.GetAsync<DateTime>(cycleTimeDataModel.AdoOrganization + startingDateSessionStoreId);
+            var startingDate = await ProtectedSessionStore.GetAsync<DateTime>(startingDateSessionStoreId);
             if (startingDate.Success)
             {
                 cycleTimeDataModel.StartingDate = startingDate.Value;
             }
-            var endingDate = await ProtectedSessionStore.GetAsync<DateTime>(cycleTimeDataModel.AdoOrganization + endingDateSessionStoreId);
+            var endingDate = await ProtectedSessionStore.GetAsync<DateTime>(endingDateSessionStoreId);
             if (endingDate.Success)
             {
                 cycleTimeDataModel.EndingDate = endingDate.Value;
@@ -183,7 +149,8 @@
 
         private async Task GatherData()
         {
-            if (string.IsNullOrWhiteSpace(cycleTimeDataModel.AdoOrganization) || cycleTimeDataModel.AdoTeam == null || cycleTimeDataModel.StartingDate == null || cycleTimeDataModel.EndingDate == null || string.IsNullOrWhiteSpace(cycleTimeDataModel.WorkItemType))
+            if (cycleTimeDataModel.AdoTeam == null || cycleTimeDataModel.StartingDate == null ||
+            cycleTimeDataModel.EndingDate == null || string.IsNullOrWhiteSpace(cycleTimeDataModel.WorkItemType))
                 return;
 
             scatterPlots = null;
@@ -195,15 +162,11 @@
 
             dataFetched = true;
 
-            string? useToken = "";
-            if (cycleTimeDataModel.AdoOrganization == AdoAnalysisService.TrTaxOrganization)
-                useToken = adoToken;
-            else if (cycleTimeDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultPatagoniaOrganization || cycleTimeDataModel.AdoOrganization == AdoAnalysisService.TrTaxDefaultEflexwareOrganization)
-                useToken = adoTrTaxDefaultToken;
-
-            if (!string.IsNullOrWhiteSpace(useToken))
+            if (!string.IsNullOrWhiteSpace(adoToken))
             {
-                scatterPlots = await GetCycleTimeScatterPlotData(cycleTimeDataModel.WorkItemType, cycleTimeDataModel.StartingDate.Value, cycleTimeDataModel.EndingDate.Value, cycleTimeDataModel.Tags ?? string.Empty, cycleTimeDataModel.AdoTeam, useToken, cycleTimeDataModel.AdoOrganization);
+                scatterPlots = await GetCycleTimeScatterPlotData(cycleTimeDataModel.WorkItemType,
+                cycleTimeDataModel.StartingDate.Value, cycleTimeDataModel.EndingDate.Value, cycleTimeDataModel.Tags ?? string.Empty,
+                cycleTimeDataModel.AdoTeam, adoToken);
                 if (scatterPlots == null)
                     return;
                 if (scatterPlots.NotAuthorized)
@@ -217,22 +180,24 @@
                 }
             }
 
-            await ProtectedLocalStore.SetAsync(adoOrgLocalStoreId, cycleTimeDataModel.AdoOrganization);
-            await ProtectedLocalStore.SetAsync(cycleTimeDataModel.AdoOrganization + adoTeamLocalStoreId, cycleTimeDataModel.AdoTeam);
-            await ProtectedLocalStore.SetAsync(cycleTimeDataModel.AdoOrganization + workItemTypeLocalStoreId, cycleTimeDataModel.WorkItemType);
-            await ProtectedLocalStore.SetAsync(cycleTimeDataModel.AdoOrganization + tagsLocalStoreId, cycleTimeDataModel.Tags ?? string.Empty);
-            await ProtectedSessionStore.SetAsync(cycleTimeDataModel.AdoOrganization + startingDateSessionStoreId, cycleTimeDataModel.StartingDate);
-            await ProtectedSessionStore.SetAsync(cycleTimeDataModel.AdoOrganization + endingDateSessionStoreId, cycleTimeDataModel.EndingDate);
+            await ProtectedLocalStore.SetAsync(adoTeamLocalStoreId, cycleTimeDataModel.AdoTeam);
+            await ProtectedLocalStore.SetAsync(workItemTypeLocalStoreId, cycleTimeDataModel.WorkItemType);
+            await ProtectedLocalStore.SetAsync(tagsLocalStoreId, cycleTimeDataModel.Tags ?? string.Empty);
+            await ProtectedSessionStore.SetAsync(startingDateSessionStoreId, cycleTimeDataModel.StartingDate);
+            await ProtectedSessionStore.SetAsync(endingDateSessionStoreId, cycleTimeDataModel.EndingDate);
         }
 
-        private async Task<ScatterPlotJsonRecord?> GetCycleTimeScatterPlotData(string workItemType, DateTime startingDate, DateTime endingDate, string tags, string adoTeam, string token, string org)
+        private async Task<ScatterPlotJsonRecord?> GetCycleTimeScatterPlotData(string workItemType, DateTime startingDate,
+        DateTime endingDate, string tags, string adoTeam, string token)
         {
-            string cacheKey = string.Format("{0}\n{1}\n{2}\n{3}\n{4}\n{5}\n{6}\n", "ct", workItemType, startingDate, endingDate, adoTeam, org, tags);
+            string cacheKey = string.Format("{0}\n{1}\n{2}\n{3}\n{4}\n{5}\n", "ct", workItemType, startingDate, endingDate,
+            adoTeam, tags);
 
             ScatterPlotJsonRecord? scatterPlotCache;
             var cached = InMemoryCache.TryGetValue(cacheKey, out scatterPlotCache);
             if (!cached || scatterPlotCache == null)
-                scatterPlotCache = await AdoService.GetCycleTimeScatterPlotData(workItemType, startingDate, endingDate, tags, adoTeam, token, org);
+                scatterPlotCache = await AdoService.GetCycleTimeScatterPlotData(workItemType, startingDate, endingDate, tags,
+                adoTeam, token);
 
             if (!cached && scatterPlotCache != null && !scatterPlotCache.NotAuthorized)
             {
@@ -242,17 +207,6 @@
             }
 
             return scatterPlotCache;
-        }
-
-        private async Task<ProtectedBrowserStorageResult<string>> GetAndRemovedGlobalAdoFromProtectedStoreForOneTimeMigration()
-        {
-            var orgCookie = await ProtectedLocalStore.GetAsync<string>(SettingsModel.adoOrganizationStoreId);
-            if (orgCookie.Success && !string.IsNullOrWhiteSpace(orgCookie.Value))
-            {
-                await ProtectedLocalStore.DeleteAsync(SettingsModel.adoOrganizationStoreId);
-            }
-
-            return orgCookie;
         }
     }
 </body>

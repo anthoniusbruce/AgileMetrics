@@ -5,9 +5,6 @@ namespace AgileMetricsServer.Models
 {
     public class FeatureProgressDataModel
     {
-        [Required(ErrorMessage = "Ado Organization field is required")]
-        public string? AdoOrganization { get; set; }
-
         [Required(ErrorMessage = "Feature IDs field is required. ")]
         public string? FeatureIds { get; set; }
 
