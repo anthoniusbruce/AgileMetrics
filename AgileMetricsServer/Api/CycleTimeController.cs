@@ -19,6 +19,7 @@ namespace AgileMetricsServer.Api
 
         [HttpPost]
         [Route("api/charts/cycletime/v1")]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult?> CycleTimeChartData()
         {
             using (StreamReader reader = new StreamReader(Request.Body, Encoding.UTF8))
